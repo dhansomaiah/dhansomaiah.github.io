@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>résumuncher</title>
+<meta name="description" content="Dhan Somaiah. Computer engineering 2018-23. Performance marketing intern 2023. Web developer since. Now: AI web apps, custom harnesses, data pipelines, model evals.">
+<style>
+  :root {
+    --bg: #fff7e8; --fg: #1d1a16; --dim: #8c8173; --faint: #f0e2c8;
+    --wall: #00a99d; --player: #ff2e88; --dot: #ff7a00; --bug1: #ffb800; --bug2: #ff5a36;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121212; --fg: #f5f0e6; --dim: #8a8580; --faint: #2a2a2a;
+      --wall: #19d3c5; --player: #ff3d94; --dot: #ffd400; --bug1: #ff7a00; --bug2: #b6f03c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body {
+    font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    min-height: 100vh; display: flex; justify-content: center;
+    padding: 48px 16px; -webkit-font-smoothing: antialiased;
+  }
+  main { width: 100%; max-width: 760px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 20px; }
+  .by { color: var(--dim); font-size: 13px; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: -0.2px; }
+  .stage { position: relative; margin: 0 auto; touch-action: none; }
+  canvas { display: block; }
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; text-align: center; padding: 16px; background: color-mix(in srgb, var(--bg) 80%, transparent);
+    cursor: pointer; border-radius: 10px;
+  }
+  .overlay[hidden] { display: none; }
+  .overlay strong { font-size: 17px; font-weight: 600; }
+  .overlay span { color: var(--dim); font-size: 13px; }
+  .status { margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--dim); }
+  .lives { display: flex; gap: 6px; align-items: center; }
+  .lives i { width: 10px; height: 10px; border-radius: 3px; background: var(--player); display: inline-block; }
+  .lives i.gone { background: var(--faint); }
+  .count { font-variant-numeric: tabular-nums; }
+  .line { margin: 18px 0 0; font-size: 16px; line-height: 1.6; min-height: 3.2em; }
+  .line span.landed { animation: pop .5s ease-out; }
+  @keyframes pop { from { color: var(--dot); } to { color: var(--fg); } }
+  .final { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+           gap: 18px; padding: 8%; text-align: center; pointer-events: none; }
+  .final[hidden] { display: none; }
+  .final p { margin: 0; font-size: 22px; line-height: 1.55; font-weight: 600; letter-spacing: -0.3px; }
+  .final small { color: var(--dim); font-size: 13px; opacity: 0; transition: opacity .6s; }
+  .final small.on { opacity: 1; }
+  @media (max-width: 520px) { .final p { font-size: 15px; } }
+  .fly { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 10; white-space: nowrap;
+         font: 16px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--dot); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>résumuncher</h1>
+    <span class="by">by dhansomaiah</span>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="board" aria-label="A maze game. Each dot eaten adds a word to a resume."></canvas>
+    <div class="final" id="final" hidden></div>
+    <div class="overlay" id="overlay">
+      <strong id="title">Eat the dots. Avoid the bugs.</strong>
+      <span id="sub">Press any arrow key, or tap, to start.</span>
+    </div>
+  </div>
+
+  <div class="status">
+    <span class="lives" id="lives" aria-label="lives"></span>
+    <span class="count" id="count"></span>
+  </div>
+
+  <p class="line" id="line" aria-live="polite"></p>
+
+</main>
+
+<script>
+(() => {
+  const LINE = "Dhan Somaiah. Computer engineering 2018-23. Performance marketing intern 2023. Web developer since. Now: AI web apps, custom harnesses, data pipelines, model evals.";
+  const WORDS = LINE.split(" ");
+  const MAZE = [
+    "###################",
+    "#........#........#",
+    "#.##.###.#.###.##.#",
+    "#.................#",
+    "#.##.#.#####.#.##.#",
+    "#....#...#...#....#",
+    "####.###.#.###.####",
+    ".....#.......#.....",
+    "####.#.##.##.#.####",
+    "#.................#",
+    "#.##.###.#.###.##.#",
+    "#..#.....#.....#..#",
+    "##.#.#.#####.#.#.##",
+    "#.................#",
+    "###################",
+  ];
+  const ROWS = MAZE.length, COLS = MAZE[0].length;
+  const LIVES = 3;
+  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  const OPP = { up: "down", down: "up", left: "right", right: "left" };
+  const ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
+
+  const canvas = document.getElementById("board"), ctx = canvas.getContext("2d");
+  const overlay = document.getElementById("overlay"), titleEl = document.getElementById("title"), subEl = document.getElementById("sub");
+  const finalEl = document.getElementById("final");
+  const countEl = document.getElementById("count"), lineEl = document.getElementById("line"), livesEl = document.getElementById("lives");
+
+  let cell, W, H, colors = {}, state = "ready", player, bugs, dots, eaten, lives, last, endAt;
+
+  const wrap = (x) => ((x % COLS) + COLS) % COLS;
+  const open = (x, y) => y >= 0 && y < ROWS && MAZE[y][wrap(x)] !== "#";
+
+  function readColors() {
+    const cs = getComputedStyle(document.documentElement);
+    for (const k of ["bg", "fg", "dim", "faint", "wall", "player", "dot", "bug1", "bug2"]) colors[k] = cs.getPropertyValue("--" + k).trim();
+  }
+
+  function size() {
+    const w = document.querySelector("main").clientWidth;
+    cell = Math.max(16, Math.min(38, Math.floor(w / COLS)));
+    W = COLS * cell; H = ROWS * cell;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + "px"; canvas.style.height = H + "px";
+    canvas.parentElement.style.width = W + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // ---- setup -------------------------------------------------------------------------------------
+
+  const mover = (x, y, dir, speed) => ({ x, y, dir, next: null, t: 0, speed, face: dir || "right" });
+
+  function placeActors() {
+    player = mover(9, 13, null, 6.5);
+    bugs = [Object.assign(mover(8, 7, "left", 4.6), { color: "bug1" }),
+            Object.assign(mover(10, 7, "right", 4.3), { color: "bug2" })];
+  }
+
+  function newGame() {
+    // one dot per word, spread evenly over the open squares, away from where everyone starts
+    const spots = [];
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++)
+      if (MAZE[y][x] === "." && y !== 7 && !(y === 13 && Math.abs(x - 9) < 2)) spots.push({ x, y });
+    const step = spots.length / WORDS.length;
+    dots = WORDS.map((_, i) => ({ ...spots[Math.floor(i * step + step / 2)] }));
+    eaten = 0; lives = LIVES;
+    finalEl.hidden = true; finalEl.innerHTML = "";
+    placeActors(); renderLine(); renderStatus();
+  }
+
+  function renderLine(from) {
+    if (lineEl.children.length > eaten) lineEl.innerHTML = "";
+    for (let i = lineEl.children.length; i < eaten; i++) {
+      if (i) lineEl.append(" ");
+      const s = document.createElement("span"); s.textContent = WORDS[i]; lineEl.append(s);
+      if (from) fly(s, from); else s.className = "landed";
+    }
+  }
+
+  // The word leaves the dot it was eaten from, arcs up out of the maze and lands in its place in the line.
+  const center = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+
+  function flight(text, from, to, { s0 = 1, s1 = 1, pop = false, delay = 0, dur = 850, done }) {
+    const f = document.createElement("div"); f.className = "fly"; f.textContent = text;
+    document.body.append(f);
+    const at = (x, y, s, r) => `translate(${x}px, ${y}px) translate(-50%, -50%) scale(${s}) rotate(${r}deg)`;
+    const lift = Math.min(90, 30 + Math.abs(to.y - from.y) * 0.25);
+    const frames = pop
+      ? [{ transform: at(from.x, from.y, 0.3, -8), opacity: 0 },
+         { transform: at(from.x, from.y - 18, 1.35, 4), opacity: 1, offset: 0.18 }]
+      : [{ transform: at(from.x, from.y, s0, 0), opacity: 1 }];
+    frames.push({ transform: at((from.x + to.x) / 2, Math.min(from.y, to.y) - lift, (s0 + s1) / 2 * 1.15, -3), opacity: 1, offset: 0.55 },
+                { transform: at(to.x, to.y, s1, 0), opacity: 1 });
+    const a = f.animate(frames, { duration: dur, delay, easing: "cubic-bezier(.25,.6,.3,1)", fill: "backwards" });
+    a.onfinish = () => { f.remove(); done && done(); };
+    return a;
+  }
+
+  // dot -> its place in the line under the maze
+  function fly(span, tile) {
+    span.style.visibility = "hidden";
+    const c = canvas.getBoundingClientRect();
+    flight(span.textContent, { x: c.left + tile.x * cell + cell / 2, y: c.top + tile.y * cell + cell / 2 }, center(span.getBoundingClientRect()),
+           { pop: true, done: () => { span.style.visibility = ""; span.className = "landed"; } });
+  }
+
+  // the line under the maze -> the whole resume, on the board
+  function transpose() {
+    const p = document.createElement("p"), hint = document.createElement("small");
+    hint.textContent = "any key plays again";
+    const spots = WORDS.map((w, i) => {
+      if (i) p.append(" ");
+      const s = document.createElement("span"); s.textContent = w; s.style.visibility = "hidden"; p.append(s); return s;
+    });
+    finalEl.innerHTML = ""; finalEl.append(p, hint); finalEl.hidden = false;
+    const scale = parseFloat(getComputedStyle(p).fontSize) / 16;
+    const from = [...lineEl.querySelectorAll("span")];
+    from.forEach((src, i) => {
+      const a = center(src.getBoundingClientRect()), b = center(spots[i].getBoundingClientRect());
+      flight(WORDS[i], a, b, { s0: 1, s1: scale, delay: i * 55, dur: 900,
+        done: () => { spots[i].style.visibility = ""; if (i === WORDS.length - 1) hint.classList.add("on"); } });
+      setTimeout(() => { src.style.visibility = "hidden"; }, i * 55);
+    });
+  }
+
+  function renderStatus() {
+    countEl.textContent = `${eaten}/${WORDS.length}`;
+    livesEl.innerHTML = "";
+    for (let i = 0; i < LIVES; i++) { const d = document.createElement("i"); if (i >= lives) d.className = "gone"; livesEl.append(d); }
+  }
+
+  // ---- movement: square to square, smooth in between ----------------------------------------------
+
+  const canGo = (m, dir) => open(m.x + DIRS[dir][0], m.y + DIRS[dir][1]);
+
+  function advance(m, dt, decide) {
+    if (!m.dir) {
+      if (m.next && canGo(m, m.next)) { m.dir = m.next; m.next = null; } else return;
+    }
+    m.face = m.dir;
+    m.t += m.speed * dt;
+    while (m.t >= 1) {
+      m.x = wrap(m.x + DIRS[m.dir][0]); m.y += DIRS[m.dir][1]; m.t -= 1;
+      decide(m);                               // at the centre of a square: turn, carry on, or stop
+      if (!m.dir) { m.t = 0; break; }
+      m.face = m.dir;
+    }
+  }
+
+  function playerDecide(m) {
+    const i = dots.findIndex((d) => d && d.x === m.x && d.y === m.y);
+    if (i >= 0) { const d = dots[i]; dots[i] = null; eaten++; renderLine(d); renderStatus(); if (eaten === WORDS.length) return win(); }
+    if (m.next && performance.now() - m.nextAt > 450) m.next = null;     // a turn pressed long ago has expired
+    if (m.next && canGo(m, m.next)) { m.dir = m.next; m.next = null; }
+    if (!canGo(m, m.dir)) m.dir = null;
+  }
+
+  function bugDecide(m) {
+    const options = Object.keys(DIRS).filter((d) => d !== OPP[m.dir] && canGo(m, d));
+    if (!options.length) { m.dir = OPP[m.dir]; return; }
+    if (Math.random() < 0.55) {                // mostly lean towards the player, sometimes wander
+      options.sort((a, b) => toward(m, a) - toward(m, b));
+      m.dir = options[0];
+    } else m.dir = options[Math.floor(Math.random() * options.length)];
+  }
+  const toward = (m, d) => {
+    let dx = Math.abs(wrap(m.x + DIRS[d][0]) - player.x); dx = Math.min(dx, COLS - dx);
+    return dx + Math.abs(m.y + DIRS[d][1] - player.y);
+  };
+
+  const pos = (m) => { const [dx, dy] = m.dir ? DIRS[m.dir] : [0, 0]; return { x: m.x + dx * m.t, y: m.y + dy * m.t }; };
+
+  // ---- game flow ---------------------------------------------------------------------------------
+
+  function update(dt) {
+    advance(player, dt, playerDecide);
+    if (state !== "playing") return;
+    for (const b of bugs) advance(b, dt, bugDecide);
+    const p = pos(player);
+    for (const b of bugs) {
+      const q = pos(b);
+      let dx = Math.abs(p.x - q.x); dx = Math.min(dx, COLS - dx);
+      if (dx + Math.abs(p.y - q.y) < 0.7) return caught();
+    }
+  }
+
+  function caught() {
+    lives--; renderStatus();
+    if (lives <= 0) {
+      state = "over"; titleEl.textContent = "The bugs got you.";
+      subEl.textContent = `You ate ${eaten} of ${WORDS.length} words. Tap or press a key to try again.`;
+    } else {
+      state = "ready"; placeActors();
+      titleEl.textContent = lives === 1 ? "Last life." : `${lives} lives left.`;
+      subEl.textContent = "Press any arrow key, or tap, to carry on.";
+    }
+    overlay.hidden = false;
+  }
+
+  function win() {
+    state = "won"; endAt = performance.now(); overlay.hidden = true;
+    setTimeout(transpose, 950);              // let the last word land in the line first
+  }
+
+  function start() {
+    if (state === "playing") return;
+    if (state === "over" || state === "won") newGame();
+    state = "playing"; overlay.hidden = true;
+  }
+
+  // ---- drawing -----------------------------------------------------------------------------------
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  function drawMaze(alpha) {
+    ctx.globalAlpha = alpha;
+    // Walls are thick strokes joining the centres of neighbouring wall squares: one solid shape, rounded ends.
+    ctx.strokeStyle = colors.wall; ctx.fillStyle = colors.wall;
+    ctx.lineWidth = cell * 0.5; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    const c = (v) => v * cell + cell / 2, wall = (x, y) => y >= 0 && y < ROWS && x >= 0 && x < COLS && MAZE[y][x] === "#";
+    ctx.beginPath();
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      if (!wall(x, y)) continue;
+      if (wall(x + 1, y)) { ctx.moveTo(c(x), c(y)); ctx.lineTo(c(x + 1), c(y)); }
+      if (wall(x, y + 1)) { ctx.moveTo(c(x), c(y)); ctx.lineTo(c(x), c(y + 1)); }
+      if (!wall(x + 1, y) && !wall(x - 1, y) && !wall(x, y + 1) && !wall(x, y - 1)) { ctx.moveTo(c(x), c(y)); ctx.lineTo(c(x) + 0.01, c(y)); }
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawDots(now) {
+    const r = Math.max(2.5, cell * 0.13), pulse = 1 + 0.12 * Math.sin(now / 220);
+    ctx.fillStyle = colors.dot;
+    for (const d of dots) if (d) { ctx.beginPath(); ctx.arc(d.x * cell + cell / 2, d.y * cell + cell / 2, r * pulse, 0, Math.PI * 2); ctx.fill(); }
+  }
+
+  function drawPlayer(now) {
+    const p = pos(player), cx = p.x * cell + cell / 2, cy = p.y * cell + cell / 2, s = cell * 0.78;
+    const moving = !!player.dir && state === "playing";
+    const mouth = moving ? 0.25 + 0.75 * Math.abs(Math.sin(now / 75)) : 0.4;   // the chomp
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(ANGLE[player.face]);
+    // body with a notch for a mouth, drawn as one shape so nothing behind it shows through
+    const m = s * 0.46 * mouth, h = s / 2, rr = s * 0.28;
+    ctx.fillStyle = colors.player;
+    ctx.beginPath();
+    ctx.moveTo(h, -m); ctx.lineTo(s * 0.04, 0); ctx.lineTo(h, m);
+    ctx.arcTo(h, h, -h, h, rr); ctx.arcTo(-h, h, -h, -h, rr); ctx.arcTo(-h, -h, h, -h, rr); ctx.arcTo(h, -h, h, -m, Math.min(rr, h - m));
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = colors.bg;                                                  // an eye
+    ctx.beginPath(); ctx.arc(-s * 0.06, -s * 0.24, s * 0.075, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBug(b, now) {
+    const p = pos(b), cx = p.x * cell + cell / 2, cy = p.y * cell + cell / 2, s = cell * 0.34;
+    const wig = Math.sin(now / 55 + b.speed * 10) * 0.35;
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(ANGLE[b.face]);
+    ctx.strokeStyle = colors[b.color]; ctx.lineWidth = Math.max(1.5, cell * 0.06); ctx.lineCap = "round";
+    for (const side of [-1, 1]) for (const k of [-0.6, 0, 0.6]) {            // six legs, scuttling
+      const w = k === 0 ? wig : -wig;
+      ctx.beginPath(); ctx.moveTo(k * s, side * s * 0.5); ctx.lineTo(k * s + w * s, side * s * 1.25); ctx.stroke();
+    }
+    for (const side of [-1, 1]) {                                               // antennae
+      ctx.beginPath(); ctx.moveTo(s * 0.9, side * s * 0.25); ctx.lineTo(s * 1.45, side * s * 0.75); ctx.stroke();
+    }
+    ctx.fillStyle = colors[b.color];
+    ctx.beginPath(); ctx.ellipse(0, 0, s * 1.05, s * 0.72, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = colors.bg; ctx.lineWidth = Math.max(1, cell * 0.035);
+    ctx.beginPath(); ctx.moveTo(-s * 0.9, 0); ctx.lineTo(s * 0.55, 0); ctx.stroke();   // where the wings meet
+    ctx.restore();
+  }
+
+  function drawWin(now) {
+    const t = (now - endAt) / 1000;
+    drawMaze(Math.max(0.08, 1 - t * 1.2));
+    if (t < 0.9) { ctx.globalAlpha = 1 - t / 0.9; drawPlayer(now); ctx.globalAlpha = 1; }
+  }
+
+  function draw(now) {
+    ctx.fillStyle = colors.bg; ctx.fillRect(0, 0, W, H);
+    if (state === "won") return drawWin(now);
+    drawMaze(1); drawDots(now);
+    for (const b of bugs) drawBug(b, now);
+    drawPlayer(now);
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
+    if (state === "playing") update(dt);
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+
+  // ---- input -------------------------------------------------------------------------------------
+
+  const KEYS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
+                 w: "up", s: "down", a: "left", d: "right", W: "up", S: "down", A: "left", D: "right" };
+  const settled = () => state !== "won" || performance.now() - endAt > 950 + WORDS.length * 55 + 1000;
+
+  function steer(d) {
+    if (!settled()) return;
+    if (state !== "playing") start();
+    if (player.dir && d === OPP[player.dir]) {
+      // turning straight back is allowed at any moment
+      player.x = wrap(player.x + DIRS[player.dir][0]); player.y += DIRS[player.dir][1];
+      player.t = 1 - player.t; player.dir = d; player.face = d; player.next = null;
+      return;
+    }
+    player.next = d; player.nextAt = performance.now();
+  }
+
+  addEventListener("keydown", (e) => {
+    const d = KEYS[e.key];
+    if (d) { e.preventDefault(); steer(d); return; }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === " ") e.preventDefault();
+    if (state !== "playing" && settled()) start();
+  });
+
+  let t0 = null;
+  const stage = document.getElementById("stage");
+  stage.addEventListener("touchstart", (e) => { t0 = e.touches[0]; }, { passive: true });
+  stage.addEventListener("touchend", (e) => {
+    if (!t0) return;
+    const t = e.changedTouches[0], dx = t.clientX - t0.clientX, dy = t.clientY - t0.clientY; t0 = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) { if (state !== "playing" && settled()) start(); return; }
+    steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
+  });
+  overlay.addEventListener("click", start);
+  canvas.addEventListener("click", () => { if (state !== "playing" && settled()) start(); });
+
+  addEventListener("resize", size);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
+
+  readColors(); size(); newGame();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
