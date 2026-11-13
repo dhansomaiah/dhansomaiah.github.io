@@ -16,7 +16,7 @@
     }
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); overscroll-behavior: none; }
   body {
     font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     min-height: 100vh; display: flex; justify-content: center;
@@ -413,14 +413,26 @@
     if (state !== "playing" && settled()) start();
   });
 
-  let t0 = null;
+  // While you play, a swipe anywhere on the screen steers and the page doesn't scroll under your thumb.
+  // Keep the finger down and swipe again to turn again.
+  let t0 = null, swiped = false;
   const stage = document.getElementById("stage");
-  stage.addEventListener("touchstart", (e) => { t0 = e.touches[0]; }, { passive: true });
-  stage.addEventListener("touchend", (e) => {
+  const ownsTouch = (e) => state === "playing" || stage.contains(e.target);
+  document.addEventListener("touchstart", (e) => {
+    if (!ownsTouch(e)) { t0 = null; return; }
+    const t = e.touches[0]; t0 = { x: t.clientX, y: t.clientY }; swiped = false;
+  }, { passive: true });
+  document.addEventListener("touchmove", (e) => {
     if (!t0) return;
-    const t = e.changedTouches[0], dx = t.clientX - t0.clientX, dy = t.clientY - t0.clientY; t0 = null;
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) { if (state !== "playing" && settled()) start(); return; }
+    e.preventDefault();
+    const t = e.touches[0], dx = t.clientX - t0.x, dy = t.clientY - t0.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 18) return;
     steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
+    t0 = { x: t.clientX, y: t.clientY }; swiped = true;
+  }, { passive: false });
+  document.addEventListener("touchend", () => {
+    if (t0 && !swiped && state !== "playing" && settled()) start();
+    t0 = null;
   });
   overlay.addEventListener("click", start);
   canvas.addEventListener("click", () => { if (state !== "playing" && settled()) start(); });
