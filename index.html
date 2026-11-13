@@ -111,6 +111,11 @@
   const canvas = document.getElementById("board"), ctx = canvas.getContext("2d");
   const overlay = document.getElementById("overlay"), titleEl = document.getElementById("title"), subEl = document.getElementById("sub");
   const finalEl = document.getElementById("final");
+  const TOUCH = matchMedia("(pointer: coarse)").matches;
+  const GO = TOUCH ? "Swipe to steer. Tap to start." : "Press any arrow key, or tap, to start.";
+  const AGAIN = TOUCH ? "Tap to try again." : "Tap or press a key to try again.";
+  const ON = TOUCH ? "Tap to carry on." : "Press any arrow key, or tap, to carry on.";
+  document.getElementById("sub").textContent = GO;
   const countEl = document.getElementById("count"), lineEl = document.getElementById("line"), livesEl = document.getElementById("lives");
 
   let cell, W, H, colors = {}, state = "ready", player, bugs, dots, eaten, lives, last, endAt;
@@ -195,7 +200,7 @@
   // the line under the maze -> the whole resume, on the board
   function transpose() {
     const p = document.createElement("p"), hint = document.createElement("small");
-    hint.textContent = "any key plays again";
+    hint.textContent = TOUCH ? "tap to play again" : "any key plays again";
     const spots = WORDS.map((w, i) => {
       if (i) p.append(" ");
       const s = document.createElement("span"); s.textContent = w; s.style.visibility = "hidden"; p.append(s); return s;
@@ -276,11 +281,11 @@
     lives--; renderStatus();
     if (lives <= 0) {
       state = "over"; titleEl.textContent = "The bugs got you.";
-      subEl.textContent = `You ate ${eaten} of ${WORDS.length} words. Tap or press a key to try again.`;
+      subEl.textContent = `You ate ${eaten} of ${WORDS.length} words. ${AGAIN}`;
     } else {
       state = "ready"; placeActors();
       titleEl.textContent = lives === 1 ? "Last life." : `${lives} lives left.`;
-      subEl.textContent = "Press any arrow key, or tap, to carry on.";
+      subEl.textContent = ON;
     }
     overlay.hidden = false;
   }
