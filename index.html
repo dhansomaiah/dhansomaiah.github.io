@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <title>résumuncher</title>
 <style>
   :root {
@@ -23,9 +26,10 @@
     padding: 48px 16px; -webkit-font-smoothing: antialiased;
   }
   main { width: 100%; max-width: 760px; }
-  header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 20px; }
+  header { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 26px; text-align: center; }
   .by { color: var(--dim); font-size: 13px; }
-  h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: -0.2px; }
+  h1 { font-family: 'Press Start 2P', ui-monospace, monospace; font-size: 26px; line-height: 1.2; font-weight: 400; letter-spacing: 1px; text-shadow: 3px 3px 0 var(--faint); }
+  @media (max-width: 520px) { h1 { font-size: 18px; } }
   .stage { position: relative; margin: 0 auto; touch-action: none; }
   canvas { display: block; }
   .overlay {
@@ -58,8 +62,8 @@
 <body>
 <main>
   <header>
-    <h1>résumuncher</h1>
-    <span class="by">by dhansomaiah</span>
+    <h1 id="logo">résumuncher</h1>
+    <span class="by">inspired by Pac-Man</span>
   </header>
 
   <div class="stage" id="stage">
@@ -110,6 +114,14 @@
   const canvas = document.getElementById("board"), ctx = canvas.getContext("2d");
   const overlay = document.getElementById("overlay"), titleEl = document.getElementById("title"), subEl = document.getElementById("sub");
   const finalEl = document.getElementById("final");
+  {
+    const logo = document.getElementById("logo"), hues = ["--wall", "--player", "--dot", "--bug1"];
+    const word = logo.textContent; logo.innerHTML = "";
+    [...word].forEach((ch, i) => {
+      const s = document.createElement("span"); s.textContent = ch; s.style.color = `var(${hues[i % hues.length]})`; logo.append(s);
+    });
+    logo.setAttribute("aria-label", "résumuncher");
+  }
   const TOUCH = matchMedia("(pointer: coarse)").matches;
   const GO = TOUCH ? "Swipe to steer. Tap to start." : "Press any arrow key, or tap, to start.";
   const AGAIN = TOUCH ? "Tap to try again." : "Tap or press a key to try again.";
