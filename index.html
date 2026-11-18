@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-<title>résumuncher</title>
+<title>résumé on the fly</title>
 <style>
   :root { --bg: #fff7e8; --fg: #1d1a16; --dim: #8c8173; --faint: #f0e2c8; --wall: #00a99d; --player: #ff2e88; --dot: #ff7a00; --bug1: #ffb800; }
   @media (prefers-color-scheme: dark) {
@@ -49,11 +49,11 @@
           background: color-mix(in srgb, var(--bg) 80%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
   .overlay[hidden] { display: none; }
   h1 { margin: 0; font-family: 'Press Start 2P', ui-monospace, monospace; font-size: 30px; line-height: 1.2; font-weight: 400;
-       letter-spacing: 1px; text-shadow: 3px 3px 0 var(--faint); }
-  .by { color: var(--dim); font-size: 13px; margin-bottom: 14px; }
+       letter-spacing: 1px; text-shadow: 3px 3px 0 var(--faint); margin-bottom: 14px; }
+  h1 span { white-space: nowrap; }
   .overlay strong { font-size: 17px; font-weight: 600; }
   .overlay span { color: color-mix(in srgb, var(--fg) 70%, transparent); font-size: 13px; max-width: 48ch; }
-  @media (max-width: 520px) { h1 { font-size: 19px; } }
+  @media (max-width: 520px) { h1 { font-size: 16px; } }
 
   .final { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
            gap: 18px; padding: 8%; text-align: center; pointer-events: none;
@@ -80,8 +80,7 @@
   <div class="tip" id="tip"></div>
   <div class="final" id="final" hidden></div>
   <div class="overlay" id="overlay"><div class="card">
-    <h1 id="logo">résumuncher</h1>
-    <span class="by">inspired by Pac-Man</span>
+    <h1 id="logo">résumé on the fly</h1>
     <strong id="title">A small bird in a quiet house.</strong>
     <span id="sub"></span>
     <span id="hint"></span>
@@ -99,11 +98,14 @@ const canvas = $("board"), overlay = $("overlay"), titleEl = $("title"), subEl =
 const finalEl = $("final"), countEl = $("count"), lineEl = $("line"), hudEl = $("hud"), tipEl = $("tip");
 {
   const logo = $("logo"), hues = ["--wall", "--player", "--dot", "--bug1"];
-  const word = logo.textContent; logo.innerHTML = "";
-  [...word].forEach((ch, i) => {
-    const s = document.createElement("span"); s.textContent = ch; s.style.color = `var(${hues[i % hues.length]})`; logo.append(s);
+  const name = logo.textContent; let i = 0; logo.innerHTML = "";
+  name.split(" ").forEach((word, n) => {                 // a colour for each letter, and words that stay whole when the line wraps
+    if (n) logo.append(" ");
+    const w = document.createElement("span");
+    for (const ch of word) { const s = document.createElement("span"); s.textContent = ch; s.style.color = `var(${hues[i++ % hues.length]})`; w.append(s); }
+    logo.append(w);
   });
-  logo.setAttribute("aria-label", "résumuncher");
+  logo.setAttribute("aria-label", name);
 }
 const TOUCH = matchMedia("(pointer: coarse)").matches;
 const GO = TOUCH ? "Tap to begin." : "Click to begin.";
