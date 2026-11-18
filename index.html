@@ -2,459 +2,1043 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <title>résumuncher</title>
 <style>
-  :root {
-    --bg: #fff7e8; --fg: #1d1a16; --dim: #8c8173; --faint: #f0e2c8;
-    --wall: #00a99d; --player: #ff2e88; --dot: #ff7a00; --bug1: #ffb800; --bug2: #ff5a36;
-  }
+  :root { --bg: #fff7e8; --fg: #1d1a16; --dim: #8c8173; --faint: #f0e2c8; --wall: #00a99d; --player: #ff2e88; --dot: #ff7a00; --bug1: #ffb800; }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #121212; --fg: #f5f0e6; --dim: #8a8580; --faint: #2a2a2a;
-      --wall: #19d3c5; --player: #ff3d94; --dot: #ffd400; --bug1: #ff7a00; --bug2: #b6f03c;
-    }
+    :root { --bg: #121212; --fg: #f5f0e6; --dim: #8a8580; --faint: #2a2a2a; --wall: #19d3c5; --player: #ff3d94; --dot: #ffd400; --bug1: #ff7a00; }
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--fg); overscroll-behavior: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); overscroll-behavior: none; }
   body {
-    font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    min-height: 100vh; display: flex; justify-content: center;
-    padding: 48px 16px; -webkit-font-smoothing: antialiased;
+    font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; -webkit-font-smoothing: antialiased;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
   }
-  main { width: 100%; max-width: 760px; }
-  header { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 26px; text-align: center; }
-  .by { color: var(--dim); font-size: 13px; }
-  h1 { font-family: 'Press Start 2P', ui-monospace, monospace; font-size: 26px; line-height: 1.2; font-weight: 400; letter-spacing: 1px; text-shadow: 3px 3px 0 var(--faint); }
-  @media (max-width: 520px) { h1 { font-size: 18px; } }
-  .stage { position: relative; margin: 0 auto; touch-action: none; }
-  canvas { display: block; }
-  .overlay {
-    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 8px; text-align: center; padding: 16px; background: color-mix(in srgb, var(--bg) 80%, transparent);
-    cursor: pointer; border-radius: 10px;
+  .stage { position: fixed; inset: 0; overflow: hidden; }
+  #board { display: block; width: 100%; height: 100%; }
+
+  .hud {
+    position: absolute; left: 0; right: 0; top: 0; pointer-events: none;
+    padding: max(14px, env(safe-area-inset-top)) 18px 34px;
+    background: linear-gradient(color-mix(in srgb, var(--bg) 88%, transparent), color-mix(in srgb, var(--bg) 55%, transparent) 60%, transparent);
+    transition: opacity .6s;
   }
-  .overlay[hidden] { display: none; }
-  .overlay strong { font-size: 17px; font-weight: 600; }
-  .overlay span { color: var(--dim); font-size: 13px; }
-  .status { margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--dim); }
-  .lives { display: flex; gap: 6px; align-items: center; }
-  .lives i { width: 10px; height: 10px; border-radius: 3px; background: var(--player); display: inline-block; }
-  .lives i.gone { background: var(--faint); }
+  .hud.empty { opacity: 0; }
+  .hud > div { max-width: 1000px; margin: 0 auto; }
+  .status { display: flex; justify-content: flex-end; font-size: 14px; color: var(--dim); }
   .count { font-variant-numeric: tabular-nums; }
-  .line { margin: 18px 0 0; font-size: 16px; line-height: 1.6; min-height: 3.2em; }
+  .line { margin: 2px 0 0; font-size: 26px; line-height: 1.45; min-height: 1.45em; font-weight: 600; letter-spacing: -0.3px; }
   .line span.landed { animation: pop .5s ease-out; }
   @keyframes pop { from { color: var(--dot); } to { color: var(--fg); } }
+  @media (max-width: 520px) { .line, .fly { font-size: 18px; } }
+  .tip { position: absolute; left: 50%; bottom: max(34px, env(safe-area-inset-bottom)); transform: translate(-50%, 8px); padding: 10px 18px; border-radius: 22px;
+         font-size: 15px; width: max-content; max-width: calc(100vw - 32px); text-align: center; pointer-events: none; opacity: 0; transition: opacity .5s, transform .5s;
+         background: color-mix(in srgb, var(--bg) 80%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  .tip.on { opacity: 1; transform: translate(-50%, 0); }
+  @media (max-width: 520px) { .tip { font-size: 13px; } }
+
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    text-align: center; padding: 12vh 24px 24px; cursor: pointer;
+  }
+  .card { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 30px 36px; border-radius: 16px;
+          background: color-mix(in srgb, var(--bg) 80%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  .overlay[hidden] { display: none; }
+  h1 { margin: 0; font-family: 'Press Start 2P', ui-monospace, monospace; font-size: 30px; line-height: 1.2; font-weight: 400;
+       letter-spacing: 1px; text-shadow: 3px 3px 0 var(--faint); }
+  .by { color: var(--dim); font-size: 13px; margin-bottom: 14px; }
+  .overlay strong { font-size: 17px; font-weight: 600; }
+  .overlay span { color: color-mix(in srgb, var(--fg) 70%, transparent); font-size: 13px; max-width: 48ch; }
+  @media (max-width: 520px) { h1 { font-size: 19px; } }
+
   .final { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-           gap: 18px; padding: 8%; text-align: center; pointer-events: none; }
+           gap: 18px; padding: 8%; text-align: center; pointer-events: none;
+           background: color-mix(in srgb, var(--bg) 84%, transparent); animation: fade .9s ease-out; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
   .final[hidden] { display: none; }
-  .final p { margin: 0; font-size: 22px; line-height: 1.55; font-weight: 600; letter-spacing: -0.3px; }
+  .final p { margin: 0; max-width: 940px; font-size: 34px; line-height: 1.45; font-weight: 600; letter-spacing: -0.5px; }
   .final small { color: var(--dim); font-size: 13px; opacity: 0; transition: opacity .6s; }
   .final small.on { opacity: 1; }
-  @media (max-width: 520px) { .final p { font-size: 15px; } }
+  @media (max-width: 520px) { .final p { font-size: 21px; } }
   .fly { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 10; white-space: nowrap;
-         font: 16px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--dot); }
+         font: 600 26px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.3px; color: var(--dot); }
 </style>
 </head>
 <body>
-<main>
-  <header>
+<main class="stage" id="stage">
+  <canvas id="board" aria-label="A small bird flying around a quiet, sunlit house. Each bubble it pops adds a word to a resume."></canvas>
+
+  <div class="hud empty" id="hud"><div>
+    <div class="status"><span class="count" id="count"></span></div>
+    <p class="line" id="line" aria-live="polite"></p>
+  </div></div>
+
+  <div class="tip" id="tip"></div>
+  <div class="final" id="final" hidden></div>
+  <div class="overlay" id="overlay"><div class="card">
     <h1 id="logo">résumuncher</h1>
     <span class="by">inspired by Pac-Man</span>
-  </header>
-
-  <div class="stage" id="stage">
-    <canvas id="board" aria-label="A maze game. Each dot eaten adds a word to a resume."></canvas>
-    <div class="final" id="final" hidden></div>
-    <div class="overlay" id="overlay">
-      <strong id="title">Eat the dots. Avoid the bugs.</strong>
-      <span id="sub">Press any arrow key, or tap, to start.</span>
-    </div>
-  </div>
-
-  <div class="status">
-    <span class="lives" id="lives" aria-label="lives"></span>
-    <span class="count" id="count"></span>
-  </div>
-
-  <p class="line" id="line" aria-live="polite"></p>
-
+    <strong id="title">A small bird in a quiet house.</strong>
+    <span id="sub"></span>
+    <span id="hint"></span>
+  </div></div>
 </main>
 
-<script>
-(() => {
-  const LINE = "Dhan Somaiah. Computer engineering 2018-23. Performance marketing intern 2023. Web developer since. Now: AI web apps, custom harnesses, data pipelines, model evals.";
-  const WORDS = LINE.split(" ");
-  const MAZE = [
-    "###################",
-    "#........#........#",
-    "#.##.###.#.###.##.#",
-    "#.................#",
-    "#.##.#.#####.#.##.#",
-    "#....#...#...#....#",
-    "####.###.#.###.####",
-    ".....#.......#.....",
-    "####.#.##.##.#.####",
-    "#.................#",
-    "#.##.###.#.###.##.#",
-    "#..#.....#.....#..#",
-    "##.#.#.#####.#.#.##",
-    "#.................#",
-    "###################",
-  ];
-  const ROWS = MAZE.length, COLS = MAZE[0].length;
-  const LIVES = 3;
-  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-  const OPP = { up: "down", down: "up", left: "right", right: "left" };
-  const ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js";
 
-  const canvas = document.getElementById("board"), ctx = canvas.getContext("2d");
-  const overlay = document.getElementById("overlay"), titleEl = document.getElementById("title"), subEl = document.getElementById("sub");
-  const finalEl = document.getElementById("final");
-  {
-    const logo = document.getElementById("logo"), hues = ["--wall", "--player", "--dot", "--bug1"];
-    const word = logo.textContent; logo.innerHTML = "";
-    [...word].forEach((ch, i) => {
-      const s = document.createElement("span"); s.textContent = ch; s.style.color = `var(${hues[i % hues.length]})`; logo.append(s);
-    });
-    logo.setAttribute("aria-label", "résumuncher");
-  }
-  const TOUCH = matchMedia("(pointer: coarse)").matches;
-  const GO = TOUCH ? "Swipe to steer. Tap to start." : "Press any arrow key, or tap, to start.";
-  const AGAIN = TOUCH ? "Tap to try again." : "Tap or press a key to try again.";
-  const ON = TOUCH ? "Tap to carry on." : "Press any arrow key, or tap, to carry on.";
-  document.getElementById("sub").textContent = GO;
-  const countEl = document.getElementById("count"), lineEl = document.getElementById("line"), livesEl = document.getElementById("lives");
+const LINE = "Dhan Somaiah. Computer engineering 2018-23. Performance marketing intern 2023. Web developer since. Now: AI web apps, custom harnesses, data pipelines, model evals.";
+const WORDS = LINE.split(" ");
 
-  let cell, W, H, colors = {}, state = "ready", player, bugs, dots, eaten, lives, last, endAt;
+const $ = (id) => document.getElementById(id);
+const canvas = $("board"), overlay = $("overlay"), titleEl = $("title"), subEl = $("sub"), hintEl = $("hint");
+const finalEl = $("final"), countEl = $("count"), lineEl = $("line"), hudEl = $("hud"), tipEl = $("tip");
+{
+  const logo = $("logo"), hues = ["--wall", "--player", "--dot", "--bug1"];
+  const word = logo.textContent; logo.innerHTML = "";
+  [...word].forEach((ch, i) => {
+    const s = document.createElement("span"); s.textContent = ch; s.style.color = `var(${hues[i % hues.length]})`; logo.append(s);
+  });
+  logo.setAttribute("aria-label", "résumuncher");
+}
+const TOUCH = matchMedia("(pointer: coarse)").matches;
+const GO = TOUCH ? "Tap to begin." : "Click to begin.";
+const ON = TOUCH ? "Tap to carry on." : "Click or press a key to carry on.";
+subEl.textContent = GO;
+hintEl.textContent = "";
 
-  const wrap = (x) => ((x % COLS) + COLS) % COLS;
-  const open = (x, y) => y >= 0 && y < ROWS && MAZE[y][wrap(x)] !== "#";
-
-  function readColors() {
-    const cs = getComputedStyle(document.documentElement);
-    for (const k of ["bg", "fg", "dim", "faint", "wall", "player", "dot", "bug1", "bug2"]) colors[k] = cs.getPropertyValue("--" + k).trim();
-  }
-
-  function size() {
-    const w = document.querySelector("main").clientWidth;
-    cell = Math.max(16, Math.min(38, Math.floor(w / COLS)));
-    W = COLS * cell; H = ROWS * cell;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = W * dpr; canvas.height = H * dpr;
-    canvas.style.width = W + "px"; canvas.style.height = H + "px";
-    canvas.parentElement.style.width = W + "px";
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-
-  // ---- setup -------------------------------------------------------------------------------------
-
-  const mover = (x, y, dir, speed) => ({ x, y, dir, next: null, t: 0, speed, face: dir || "right" });
-
-  function placeActors() {
-    player = mover(9, 13, null, 6.5);
-    bugs = [Object.assign(mover(8, 7, "left", 4.6), { color: "bug1" }),
-            Object.assign(mover(10, 7, "right", 4.3), { color: "bug2" })];
-  }
-
-  function newGame() {
-    // one dot per word, spread evenly over the open squares, away from where everyone starts
-    const spots = [];
-    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++)
-      if (MAZE[y][x] === "." && y !== 7 && !(y === 13 && Math.abs(x - 9) < 2)) spots.push({ x, y });
-    const step = spots.length / WORDS.length;
-    dots = WORDS.map((_, i) => ({ ...spots[Math.floor(i * step + step / 2)] }));
-    eaten = 0; lives = LIVES;
-    finalEl.hidden = true; finalEl.innerHTML = "";
-    placeActors(); renderLine(); renderStatus();
-  }
-
-  function renderLine(from) {
-    if (lineEl.children.length > eaten) lineEl.innerHTML = "";
-    for (let i = lineEl.children.length; i < eaten; i++) {
-      if (i) lineEl.append(" ");
-      const s = document.createElement("span"); s.textContent = WORDS[i]; lineEl.append(s);
-      if (from) fly(s, from); else s.className = "landed";
-    }
-  }
-
-  // The word leaves the dot it was eaten from, arcs up out of the maze and lands in its place in the line.
-  const center = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-
-  function flight(text, from, to, { s0 = 1, s1 = 1, pop = false, delay = 0, dur = 850, done }) {
-    const f = document.createElement("div"); f.className = "fly"; f.textContent = text;
-    document.body.append(f);
-    const at = (x, y, s, r) => `translate(${x}px, ${y}px) translate(-50%, -50%) scale(${s}) rotate(${r}deg)`;
-    const lift = Math.min(90, 30 + Math.abs(to.y - from.y) * 0.25);
-    const frames = pop
-      ? [{ transform: at(from.x, from.y, 0.3, -8), opacity: 0 },
-         { transform: at(from.x, from.y - 18, 1.35, 4), opacity: 1, offset: 0.18 }]
-      : [{ transform: at(from.x, from.y, s0, 0), opacity: 1 }];
-    frames.push({ transform: at((from.x + to.x) / 2, Math.min(from.y, to.y) - lift, (s0 + s1) / 2 * 1.15, -3), opacity: 1, offset: 0.55 },
-                { transform: at(to.x, to.y, s1, 0), opacity: 1 });
-    const a = f.animate(frames, { duration: dur, delay, easing: "cubic-bezier(.25,.6,.3,1)", fill: "backwards" });
-    a.onfinish = () => { f.remove(); done && done(); };
-    return a;
-  }
-
-  // dot -> its place in the line under the maze
-  function fly(span, tile) {
-    span.style.visibility = "hidden";
-    const c = canvas.getBoundingClientRect();
-    flight(span.textContent, { x: c.left + tile.x * cell + cell / 2, y: c.top + tile.y * cell + cell / 2 }, center(span.getBoundingClientRect()),
-           { pop: true, done: () => { span.style.visibility = ""; span.className = "landed"; } });
-  }
-
-  // the line under the maze -> the whole resume, on the board
-  function transpose() {
-    const p = document.createElement("p"), hint = document.createElement("small");
-    hint.textContent = TOUCH ? "tap to play again" : "any key plays again";
-    const spots = WORDS.map((w, i) => {
-      if (i) p.append(" ");
-      const s = document.createElement("span"); s.textContent = w; s.style.visibility = "hidden"; p.append(s); return s;
-    });
-    finalEl.innerHTML = ""; finalEl.append(p, hint); finalEl.hidden = false;
-    const scale = parseFloat(getComputedStyle(p).fontSize) / 16;
-    const from = [...lineEl.querySelectorAll("span")];
-    from.forEach((src, i) => {
-      const a = center(src.getBoundingClientRect()), b = center(spots[i].getBoundingClientRect());
-      flight(WORDS[i], a, b, { s0: 1, s1: scale, delay: i * 55, dur: 900,
-        done: () => { spots[i].style.visibility = ""; if (i === WORDS.length - 1) hint.classList.add("on"); } });
-      setTimeout(() => { src.style.visibility = "hidden"; }, i * 55);
-    });
-  }
-
-  function renderStatus() {
-    countEl.textContent = `${eaten}/${WORDS.length}`;
-    livesEl.innerHTML = "";
-    for (let i = 0; i < LIVES; i++) { const d = document.createElement("i"); if (i >= lives) d.className = "gone"; livesEl.append(d); }
-  }
-
-  // ---- movement: square to square, smooth in between ----------------------------------------------
-
-  const canGo = (m, dir) => open(m.x + DIRS[dir][0], m.y + DIRS[dir][1]);
-
-  function advance(m, dt, decide) {
-    if (!m.dir) {
-      if (m.next && canGo(m, m.next)) { m.dir = m.next; m.next = null; } else return;
-    }
-    m.face = m.dir;
-    m.t += m.speed * dt;
-    while (m.t >= 1) {
-      m.x = wrap(m.x + DIRS[m.dir][0]); m.y += DIRS[m.dir][1]; m.t -= 1;
-      decide(m);                               // at the centre of a square: turn, carry on, or stop
-      if (!m.dir) { m.t = 0; break; }
-      m.face = m.dir;
-    }
-  }
-
-  function playerDecide(m) {
-    const i = dots.findIndex((d) => d && d.x === m.x && d.y === m.y);
-    if (i >= 0) { const d = dots[i]; dots[i] = null; eaten++; renderLine(d); renderStatus(); if (eaten === WORDS.length) return win(); }
-    if (m.next && performance.now() - m.nextAt > 450) m.next = null;     // a turn pressed long ago has expired
-    if (m.next && canGo(m, m.next)) { m.dir = m.next; m.next = null; }
-    if (!canGo(m, m.dir)) m.dir = null;
-  }
-
-  function bugDecide(m) {
-    const options = Object.keys(DIRS).filter((d) => d !== OPP[m.dir] && canGo(m, d));
-    if (!options.length) { m.dir = OPP[m.dir]; return; }
-    if (Math.random() < 0.55) {                // mostly lean towards the player, sometimes wander
-      options.sort((a, b) => toward(m, a) - toward(m, b));
-      m.dir = options[0];
-    } else m.dir = options[Math.floor(Math.random() * options.length)];
-  }
-  const toward = (m, d) => {
-    let dx = Math.abs(wrap(m.x + DIRS[d][0]) - player.x); dx = Math.min(dx, COLS - dx);
-    return dx + Math.abs(m.y + DIRS[d][1] - player.y);
+function random(seed) {                                // the same house every time
+  return () => {
+    seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
+}
+const rand = random(4);
+const pick = (a) => a[Math.floor(rand() * a.length)];
 
-  const pos = (m) => { const [dx, dy] = m.dir ? DIRS[m.dir] : [0, 0]; return { x: m.x + dx * m.t, y: m.y + dy * m.t }; };
+// ---- the scene -----------------------------------------------------------------------------------
 
-  // ---- game flow ---------------------------------------------------------------------------------
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
+catch (e) { titleEl.textContent = "This needs WebGL."; subEl.textContent = "Your browser couldn't start 3D graphics."; hintEl.textContent = ""; throw e; }
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(62, 1, 0.05, 300);
+scene.add(camera);
 
-  function update(dt) {
-    advance(player, dt, playerDecide);
-    if (state !== "playing") return;
-    for (const b of bugs) advance(b, dt, bugDecide);
-    const p = pos(player);
-    for (const b of bugs) {
-      const q = pos(b);
-      let dx = Math.abs(p.x - q.x); dx = Math.min(dx, COLS - dx);
-      if (dx + Math.abs(p.y - q.y) < 0.7) return caught();
+// The house: 14 by 10, walls 3 high, a pitched roof with its ridge running east to west.
+const HX = 7, HZ = 5, H = 3, RIDGE = 5.4, SLOPE = (RIDGE - H) / HZ, T = 0.3;
+const R = 0.16;                                        // how big the bird is, for bumping into things
+const SUN = new THREE.Vector3(0.5, -0.42, -0.76).normalize();      // the way the light travels: low, from the south-west
+const roofAt = (z) => RIDGE - SLOPE * Math.abs(z);
+
+const mats = new Map();
+const mat = (color, o) => {
+  if (o) return new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0, ...o });
+  if (!mats.has(color)) mats.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0 }));
+  return mats.get(color);
+};
+function texture(size, paint, rx = 1, ry = 1) {
+  const c = document.createElement("canvas"); c.width = c.height = size;
+  paint(c.getContext("2d"), size);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); return t;
+}
+const planks = (base, seam, n) => (g, s) => {
+  const h = s / n;
+  for (let i = 0; i < n; i++) {
+    const v = 0.86 + rand() * 0.22;
+    g.fillStyle = `rgb(${base.map((c) => Math.min(255, c * v) | 0)})`; g.fillRect(0, i * h, s, h);
+    g.fillStyle = seam;
+    g.fillRect(0, i * h, s, 2);
+    const cut = rand() * s; g.fillRect(cut, i * h, 2, h); g.fillRect((cut + s * 0.55) % s, i * h, 2, h);
+    g.globalAlpha = 0.05;                                            // a little grain
+    for (let k = 0; k < 14; k++) g.fillRect(rand() * s, i * h + rand() * h, 40 + rand() * 120, 1);
+    g.globalAlpha = 1;
+  }
+};
+
+const soft = texture(64, (g, s) => { const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, "rgba(255,255,255,1)"); r.addColorStop(0.35, "rgba(255,255,255,.45)"); r.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = r; g.fillRect(0, 0, s, s); });
+
+const WOOD = 0x9a6a41, DARK = 0x80583a, PALE = 0xc79a66, CREAM = 0xf3e6cf;
+const wallMat = mat(CREAM), wood = mat(WOOD), dark = mat(DARK), pale = mat(PALE);
+const solids = [];                                     // boxes the bird can't fly through, and can land on
+
+function box(w, h, d, x, y, z, m, o = {}) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+  mesh.position.set(x, y, z); mesh.castShadow = o.cast !== false; mesh.receiveShadow = true;
+  if (o.rx) mesh.rotation.x = o.rx; if (o.ry) mesh.rotation.y = o.ry; if (o.rz) mesh.rotation.z = o.rz;
+  (o.to || scene).add(mesh);
+  if (o.solid) solids.push([x - w / 2, y - h / 2, z - d / 2, x + w / 2, y + h / 2, z + d / 2]);
+  return mesh;
+}
+const stand = (w, h, d, x, y0, z, m, o) => box(w, h, d, x, y0 + h / 2, z, m, o);      // a box sitting on height y0
+function round(r0, r1, h, x, y0, z, m, o = {}) {
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, o.sides || 14), m);
+  mesh.position.set(x, y0 + h / 2, z); mesh.castShadow = o.cast !== false; mesh.receiveShadow = true; (o.to || scene).add(mesh);
+  if (o.solid) solids.push([x - r1, y0, z - r1, x + r1, y0 + h, z + r1]);
+  return mesh;
+}
+function ball(r, x, y, z, m, o = {}) {
+  const mesh = new THREE.Mesh(o.smooth ? new THREE.SphereGeometry(r, 14, 10) : new THREE.IcosahedronGeometry(r, 1), m);
+  mesh.position.set(x, y, z); if (o.scale) mesh.scale.set(...o.scale); mesh.castShadow = o.cast !== false; mesh.receiveShadow = true;
+  (o.to || scene).add(mesh); return mesh;
+}
+
+// floor
+{
+  const m = mat(0xffffff, { map: texture(512, planks([186, 134, 86], "rgba(70,40,15,.55)", 8), 11, 8), roughness: 0.75 });
+  const f = new THREE.Mesh(new THREE.PlaneGeometry(2 * HX + 1, 2 * HZ + 1), m);
+  f.rotation.x = -Math.PI / 2; f.receiveShadow = true; scene.add(f);
+}
+
+// Walls, with windows and doors cut out of them. Every opening is open: the bird can come and go as it likes.
+const panes = [], sunHoles = [];                       // the openings the sun comes through
+function wall(along, at, out, holes, sunny) {
+  const half = along === "x" ? HX + T : HZ, mid = at + out * T / 2;
+  const place = (u, y, len, h, dep, m, off = 0, o) => along === "x" ? box(len, h, dep, u, y, mid + off, m, o) : box(dep, h, len, mid + off, y, u, m, o);
+  const piece = (u0, u1, y0, y1) => { if (u1 - u0 > 0.01 && y1 - y0 > 0.01) place((u0 + u1) / 2, (y0 + y1) / 2, u1 - u0, y1 - y0, T, wallMat, 0, { solid: true }); };
+  const p = (u, y) => along === "x" ? new THREE.Vector3(u, y, at) : new THREE.Vector3(at, y, u);
+  let cursor = -half;
+  for (const { c, w, y0, y1, door } of holes.sort((a, b) => a.c - b.c)) {
+    piece(cursor, c - w / 2, 0, H); piece(c - w / 2, c + w / 2, 0, y0); piece(c - w / 2, c + w / 2, y1, H);
+    cursor = c + w / 2;
+    if (sunny) sunHoles.push({ along, c, w, y0, y1 });
+    const yc = (y0 + y1) / 2, hh = y1 - y0;
+    place(c, y1 - 0.035, w, 0.07, 0.12, dark);
+    place(c - w / 2 + 0.035, yc, 0.07, hh, 0.12, dark); place(c + w / 2 - 0.035, yc, 0.07, hh, 0.12, dark);
+    if (door) {
+      for (const side of door) {                       // the leaves, swung wide open
+        const len = door.length > 1 ? w / 2 : w, du = side * 0.35, dv = out * 0.94;
+        const leaf = place(c + side * w / 2 + du * len / 2, yc, len - 0.04, hh - 0.08, 0.045, wood, out * T / 2 + dv * len / 2);
+        leaf.rotation.y = along === "x" ? Math.atan2(-dv, du) : Math.atan2(dv, du);
+      }
+      if (sunny) for (const [ua, ub] of [[c - w / 2 + 0.07, c - 0.02], [c + 0.02, c + w / 2 - 0.07]]) panes.push([p(ua, 0.02), p(ub, 0.02), p(ub, y1 - 0.07), p(ua, y1 - 0.07)]);
+      continue;
+    }
+    place(c, y0 + 0.035, w, 0.07, 0.12, dark);
+    place(c, yc, 0.045, hh, 0.06, dark); place(c, yc, w, 0.045, 0.06, dark);
+    place(c, y0 - 0.03, w + 0.3, 0.05, 0.3, wood, -out * (T / 2 + 0.1));           // the sill, inside
+    if (sunny) for (const [ua, ub] of [[c - w / 2 + 0.07, c - 0.03], [c + 0.03, c + w / 2 - 0.07]])
+      for (const [ya, yb] of [[y0 + 0.07, yc - 0.03], [yc + 0.03, y1 - 0.07]]) panes.push([p(ua, ya), p(ub, ya), p(ub, yb), p(ua, yb)]);
+  }
+  piece(cursor, half, 0, H);
+}
+wall("x", HZ, 1, [{ c: -4, w: 1.6, y0: 0.9, y1: 2.4 }, { c: 0, w: 1.8, y0: 0, y1: 2.3, door: [-1, 1] }, { c: 4, w: 1.6, y0: 0.9, y1: 2.4 }], true);
+wall("x", -HZ, -1, [{ c: 4.5, w: 1.2, y0: 1.1, y1: 2.3 }]);
+wall("z", -HX, -1, [{ c: 1.8, w: 1.4, y0: 0.95, y1: 2.35 }], true);
+wall("z", HX, 1, [{ c: -2, w: 1.3, y0: 1.0, y1: 2.3 }, { c: 2.7, w: 0.95, y0: 0, y1: 2.05, door: [1] }]);
+
+// the gable ends, the west one with a round window high up
+const PORT = { y: 4.05, r: 0.52 };
+for (const side of [-1, 1]) {
+  const s = new THREE.Shape([new THREE.Vector2(-HZ - T, H), new THREE.Vector2(HZ + T, H), new THREE.Vector2(0, RIDGE + T * SLOPE + 0.1)]);
+  if (side < 0) { const hole = new THREE.Path(); hole.absarc(0, PORT.y, PORT.r, 0, Math.PI * 2, true); s.holes.push(hole); }
+  const g = new THREE.Mesh(new THREE.ExtrudeGeometry(s, { depth: T, bevelEnabled: false, curveSegments: 20 }), wallMat);
+  g.rotation.y = -Math.PI / 2; g.position.x = side < 0 ? -HX : HX + T; g.castShadow = g.receiveShadow = true; scene.add(g);
+}
+{
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(PORT.r, 0.045, 8, 28), dark);
+  ring.rotation.y = Math.PI / 2; ring.position.set(-HX - 0.1, PORT.y, 0); ring.castShadow = true; scene.add(ring);
+  box(0.06, 2 * PORT.r, 0.04, -HX - 0.1, PORT.y, 0, dark); box(0.06, 0.04, 2 * PORT.r, -HX - 0.1, PORT.y, 0, dark);
+  for (let q = 0; q < 4; q++) {                        // four wedges of light
+    const pts = [new THREE.Vector3(-HX, PORT.y, 0)];
+    for (let i = 0; i <= 5; i++) {
+      const a = q * Math.PI / 2 + 0.06 + i / 5 * (Math.PI / 2 - 0.12);
+      pts.push(new THREE.Vector3(-HX, PORT.y + Math.sin(a) * (PORT.r - 0.05), Math.cos(a) * (PORT.r - 0.05)));
+    }
+    panes.push(pts);
+  }
+}
+
+// roof, rafters, and the beams the bird can weave between
+const roofMat = mat(0xffffff, { map: texture(512, planks([214, 168, 118], "rgba(70,45,20,.45)", 8), 6, 4) });
+const TILT = Math.atan(SLOPE);
+for (const side of [-1, 1]) {
+  const len = (HZ + 0.9) / Math.cos(TILT), zc = side * (HZ + 0.9) / 2;
+  box(2 * HX + 1.4, 0.2, len, 0, roofAt(zc) + 0.1 * Math.cos(TILT), zc + side * 0.1 * Math.sin(TILT), roofMat, { rx: side * TILT });
+  box(2 * HX + 1.5, 0.07, len + 0.1, 0, roofAt(zc) + 0.235 * Math.cos(TILT), zc + side * 0.235 * Math.sin(TILT), mat(0xa25c48), { rx: side * TILT });
+}
+box(2 * HX, 0.18, 0.18, 0, RIDGE - 0.13, 0, dark);
+for (const x of [-5.6, -2.8, 0, 2.8, 5.6]) {
+  box(0.18, 0.2, 2 * HZ, x, H, 0, dark, { solid: true });
+  box(0.16, RIDGE - H - 0.3, 0.16, x, (H + 0.1 + RIDGE - 0.2) / 2, 0, dark, { solid: true });
+  for (const side of [-1, 1]) box(0.12, 0.14, HZ / Math.cos(TILT), x, roofAt(HZ / 2) - 0.09, side * HZ / 2, dark, { rx: side * TILT });
+}
+// skirting boards
+box(2 * HX, 0.12, 0.03, 0, 0.06, -HZ + 0.015, pale, { cast: false }); box(0.03, 0.12, 2 * HZ, -HX + 0.015, 0.06, 0, pale, { cast: false });
+for (const s of [-1, 1]) box(HX - 0.9, 0.12, 0.03, s * (HX + 0.9) / 2, 0.06, HZ - 0.015, pale, { cast: false });
+box(0.03, 0.12, HZ + 2.225, HX - 0.015, 0.06, (2.225 - HZ) / 2, pale, { cast: false }); box(0.03, 0.12, HZ - 3.175, HX - 0.015, 0.06, (HZ + 3.175) / 2, pale, { cast: false });
+
+// ---- furniture -------------------------------------------------------------------------------------
+
+function legs(w, d, h, x, z, m, t = 0.06) {
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) stand(t, h, t, x + sx * (w / 2 - t), 0, z + sz * (d / 2 - t), m);
+}
+function chair(x, z, facing, m = wood) {                // facing: which way the sitter looks, along z
+  legs(0.42, 0.42, 0.44, x, z, m, 0.04);
+  stand(0.44, 0.05, 0.44, x, 0.44, z, m);
+  stand(0.44, 0.52, 0.05, x, 0.49, z - facing * 0.2, m);
+  solids.push([x - 0.22, 0, z - 0.22, x + 0.22, 0.49, z + 0.22], [x - 0.22, 0.49, z - facing * 0.2 - 0.03, x + 0.22, 1.01, z - facing * 0.2 + 0.03]);
+}
+function plant(x, y0, z, size, greens = [0x6f9a5a, 0x86ad62, 0x5c8650]) {
+  round(0.6 * size, 0.45 * size, 0.7 * size, x, y0, z, mat(0xc27a52));
+  for (let i = 0; i < 7; i++) {
+    const a = i / 7 * Math.PI * 2, r = (i % 2 ? 0.55 : 0.3) * size;
+    ball(0.55 * size, x + Math.cos(a) * r, y0 + (0.95 + (i % 3) * 0.3) * size, z + Math.sin(a) * r, mat(greens[i % 3], { flatShading: true }), { scale: [1, 1.5, 1] });
+  }
+}
+
+// a table in the sun, laid for nobody in particular
+{
+  const x = 2.8, z = 2;
+  stand(1.7, 0.07, 0.95, x, 0.73, z, wood, { solid: true }); legs(1.7, 0.95, 0.73, x, z, wood, 0.07);
+  chair(x - 0.35, z + 0.72, -1); chair(x + 0.35, z - 0.72, 1);
+  round(0.05, 0.07, 0.2, x - 0.5, 0.8, z - 0.25, mat(0x7fa3b8, { roughness: 0.4 }));
+  [0xe7a23c, 0xd9655b, 0xf2d06b, 0xe58fa0, 0xf5f0e0].forEach((c, i) => {
+    const a = i * 1.26, r = 0.07;
+    round(0.006, 0.006, 0.2, x - 0.5 + Math.cos(a) * r * 0.5, 1.0, z - 0.25 + Math.sin(a) * r * 0.5, mat(0x5c8650), { cast: false, sides: 5 });
+    ball(0.045, x - 0.5 + Math.cos(a) * r, 1.2 + (i % 2) * 0.04, z - 0.25 + Math.sin(a) * r, mat(c, { flatShading: true }));
+  });
+  solids.push([x - 0.62, 0.8, z - 0.37, x - 0.38, 1.27, z - 0.13]);
+  round(0.16, 0.1, 0.07, x + 0.35, 0.8, z + 0.05, mat(0xe9dfcf, { roughness: 0.5 }));
+  [[0, 0xe07a3a], [2.1, 0xc94f43], [4.2, 0xe8b34a]].forEach(([a, c]) => ball(0.05, x + 0.35 + Math.cos(a) * 0.06, 0.9, z + 0.05 + Math.sin(a) * 0.06, mat(c), { smooth: true }));
+  stand(0.26, 0.03, 0.18, x + 0.12, 0.8, z - 0.25, mat(0x5b7d8c), { ry: 0.3 }); stand(0.24, 0.025, 0.17, x + 0.12, 0.83, z - 0.25, mat(0xb9584a), { ry: 0.1 });
+  // a lamp hanging over it
+  round(0.008, 0.008, 0.68, x, 2.22, z, mat(0x2a2420), { cast: false, sides: 5 });
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.2, 18, 1, true), mat(0xd9b46a, { side: THREE.DoubleSide }));
+  shade.position.set(x, 2.14, z); shade.castShadow = true; scene.add(shade);
+  solids.push([x - 0.2, 2.04, z - 0.2, x + 0.2, 2.9, z + 0.2]);
+}
+
+// the fireplace, an armchair, a rug
+{
+  const x = -2, stone = mat(0xb3a898, { flatShading: true }), soot = mat(0x2b2623);
+  stand(0.55, 3.9, 0.6, x - 0.72, 0, -HZ + 0.3, stone); stand(0.55, 3.9, 0.6, x + 0.72, 0, -HZ + 0.3, stone);
+  stand(0.9, 3.0, 0.6, x, 0.9, -HZ + 0.3, stone); stand(0.9, 0.9, 0.1, x, 0, -HZ + 0.05, soot, { cast: false });
+  stand(2.3, 0.09, 0.78, x, 1.22, -HZ + 0.39, dark);
+  stand(1.5, 0.05, 0.5, x, 0, -HZ + 0.8, stone, { cast: false });
+  solids.push([x - 1, 0, -HZ, x + 1, 3.9, -HZ + 0.6], [x - 1.15, 1.22, -HZ, x + 1.15, 1.31, -HZ + 0.78]);
+  stand(1.0, 2.9, 0.7, x, 3.5, -HZ + 0.3, stone, { solid: true }); stand(1.16, 0.12, 0.86, x, 6.4, -HZ + 0.3, stone);
+  stand(0.5, 0.09, 0.09, x - 0.05, 0.05, -HZ + 0.32, mat(0x3a2a20), { ry: 0.25 }); stand(0.45, 0.09, 0.09, x + 0.05, 0.13, -HZ + 0.3, mat(0x46301f), { ry: -0.3 });
+  ball(0.07, x, 0.1, -HZ + 0.36, new THREE.MeshBasicMaterial({ color: 0xff8a2a }), { cast: false, scale: [2.4, 0.5, 1] });
+  round(0.16, 0.16, 0.03, x, 2.1, -HZ + 0.6, mat(0xf2ead8), { sides: 24 }).rotation.x = Math.PI / 2;      // a clock
+  round(0.04, 0.05, 0.16, x - 0.8, 1.31, -HZ + 0.4, mat(0x7a8f6a)); round(0.03, 0.03, 0.22, x + 0.75, 1.31, -HZ + 0.4, mat(0xd9c9a8));
+  stand(0.3, 0.2, 0.03, x + 0.3, 1.31, -HZ + 0.25, dark, { rx: -0.15 });
+
+  const rug = texture(256, (g, s) => {
+    g.fillStyle = "#b5533c"; g.fillRect(0, 0, s, s); g.strokeStyle = "#f0dcb8"; g.lineWidth = 8; g.strokeRect(14, 14, s - 28, s - 28);
+    g.strokeStyle = "#2f6f73"; g.lineWidth = 5; g.strokeRect(30, 30, s - 60, s - 60);
+    g.fillStyle = "#f0dcb8"; for (let i = 0; i < 5; i++) { g.save(); g.translate(48 + i * 40, s / 2); g.rotate(Math.PI / 4); g.fillRect(-11, -11, 22, 22); g.restore(); }
+  });
+  const r = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.2), mat(0xffffff, { map: rug }));
+  r.rotation.x = -Math.PI / 2; r.position.set(-2.2, 0.012, -2.5); r.receiveShadow = true; scene.add(r);
+
+  const ax = -3.3, az = -2.2, cloth = mat(0x7d9a80), cushion = mat(0xe3c58f);
+  stand(0.85, 0.42, 0.8, ax, 0, az, cloth, { solid: true }); stand(0.85, 0.6, 0.2, ax, 0.42, az + 0.32, cloth, { solid: true });
+  stand(0.16, 0.24, 0.8, ax - 0.4, 0.42, az, cloth); stand(0.16, 0.24, 0.8, ax + 0.4, 0.42, az, cloth);
+  stand(0.4, 0.3, 0.12, ax, 0.44, az + 0.16, cushion, { rx: 0.25 });
+  round(0.26, 0.26, 0.04, -2.3, 0.5, -1.9, wood, { solid: true, sides: 18 }); round(0.03, 0.05, 0.5, -2.3, 0, -1.9, wood);
+  round(0.045, 0.035, 0.07, -2.3, 0.54, -1.9, mat(0xf2ead8, { roughness: 0.4 }));
+  stand(0.5, 0.3, 0.4, -3.3, 0, -3.25, mat(0xb5533c), { solid: true });
+}
+
+// books
+{
+  const x = 1.3, z = -HZ + 0.17;
+  stand(1.9, 2.2, 0.03, x, 0, -HZ + 0.02, dark); stand(0.05, 2.2, 0.34, x - 0.93, 0, z, wood); stand(0.05, 2.2, 0.34, x + 0.93, 0, z, wood);
+  stand(1.9, 0.05, 0.36, x, 2.2, z, wood);
+  solids.push([x - 0.95, 0, -HZ, x + 0.95, 2.25, -HZ + 0.36]);
+  const spines = [0x8c3f36, 0x2f5d62, 0xc79a3e, 0x4a5a7a, 0x6d7f4f, 0xd8c7a3, 0x7a4a6a, 0xb86a3c, 0x394a40];
+  for (const y of [0.04, 0.48, 0.92, 1.36, 1.8]) {
+    stand(1.82, 0.04, 0.32, x, y - 0.04, z, wood, { cast: false });
+    let u = x - 0.88;
+    while (u < x + 0.8) {
+      const w = 0.03 + rand() * 0.045, h = 0.2 + rand() * 0.14;
+      if (rand() < 0.1) { u += 0.12; continue; }
+      stand(w, h, 0.2 + rand() * 0.06, u + w / 2, y, z + 0.02, mat(pick(spines)), { cast: false, rz: rand() < 0.08 ? 0.18 : 0 });
+      u += w + 0.004;
     }
   }
+  plant(x + 0.55, 2.25, z, 0.16); stand(0.3, 0.035, 0.22, x - 0.4, 2.25, z, mat(0x8c3f36)); stand(0.28, 0.03, 0.2, x - 0.4, 2.285, z, mat(0xd8c7a3), { ry: 0.2 });
+}
 
-  function caught() {
-    lives--; renderStatus();
-    if (lives <= 0) {
-      state = "over"; titleEl.textContent = "The bugs got you.";
-      subEl.textContent = `You ate ${eaten} of ${WORDS.length} words. ${AGAIN}`;
+// a bed under a loft, and a ladder up to it
+{
+  const x = 5.75, z = -3.7;
+  stand(1.5, 0.3, 2.1, x, 0.12, z, wood, { solid: true }); stand(1.5, 0.9, 0.08, x, 0, z - 1.05, wood);
+  stand(1.42, 0.18, 2.0, x, 0.42, z, mat(0xf4ecdc));
+  const quilt = texture(128, (g, s) => { const c = ["#c9705a", "#e9c46a", "#7fa3a0", "#f0e2c4", "#9a6f8a"]; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { g.fillStyle = c[(i * 2 + j * 3) % 5]; g.fillRect(i * 32, j * 32, 32, 32); } g.strokeStyle = "rgba(255,255,255,.5)"; for (let i = 0; i <= 4; i++) { g.strokeRect(i * 32, 0, 0.5, s); g.strokeRect(0, i * 32, s, 0.5); } }, 2, 2);
+  stand(1.46, 0.08, 1.35, x, 0.58, z + 0.32, mat(0xffffff, { map: quilt }));
+  stand(0.6, 0.12, 0.36, x - 0.3, 0.6, z - 0.75, mat(0xfbf6ea)); stand(0.6, 0.12, 0.36, x + 0.35, 0.6, z - 0.75, mat(0xfbf6ea), { ry: 0.12 });
+  const rug = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 1.6), mat(0x6f8f96)); rug.rotation.x = -Math.PI / 2; rug.position.set(4.5, 0.012, -3.4); rug.receiveShadow = true; scene.add(rug);
+
+  // the loft: a floor above the bed, a rail round it, a ladder up
+  const LOFT = 2.56, lz = (-HZ - 0.2) / 2, ld = HZ - 0.2;
+  box(HX - 4.3, 0.12, ld, (HX + 4.3) / 2, LOFT - 0.06, lz, pale, { solid: true });
+  box(0.1, 0.22, ld, 4.3, LOFT - 0.13, lz, dark); box(HX - 4.3, 0.22, 0.1, (HX + 4.3) / 2, LOFT - 0.13, -0.2, dark);
+  for (const x of [5.2, 6.1]) box(0.1, 0.16, ld, x, LOFT - 0.2, lz, dark, { cast: false });
+  const rail = (x0, z0, x1, z1) => {
+    const len = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(len / 0.8)), across = x0 !== x1;
+    for (let i = 0; i <= n; i++) stand(0.05, 0.66, 0.05, x0 + (x1 - x0) * i / n, LOFT, z0 + (z1 - z0) * i / n, wood);
+    across ? box(len, 0.05, 0.07, (x0 + x1) / 2, LOFT + 0.68, z0, dark) : box(0.07, 0.05, len, x0, LOFT + 0.68, (z0 + z1) / 2, dark);
+    solids.push(across ? [x0, LOFT, z0 - 0.04, x1, LOFT + 0.71, z0 + 0.04] : [x0 - 0.04, LOFT, z0, x0 + 0.04, LOFT + 0.71, z1]);
+  };
+  rail(4.34, -HZ + 0.1, 4.34, -1.85); rail(4.34, -0.95, 4.34, -0.24); rail(4.34, -0.24, HX - 0.1, -0.24);
+  stand(0.6, 0.5, 0.6, 6.4, LOFT, -4.3, wood, { solid: true }); stand(0.45, 0.36, 0.45, 6.4, LOFT + 0.5, -4.3, pale);
+  stand(0.95, 0.42, 0.55, 5.2, LOFT, -4.5, mat(0x4f6a5e), { solid: true }); stand(0.97, 0.06, 0.57, 5.2, LOFT + 0.42, -4.5, dark);
+  const mat2 = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.0), mat(0xb5533c)); mat2.rotation.x = -Math.PI / 2; mat2.position.set(5.7, LOFT + 0.012, -2.2); mat2.receiveShadow = true; scene.add(mat2);
+  stand(0.5, 0.14, 0.5, 6.3, LOFT, -1.5, mat(0xe3c58f)); stand(0.45, 0.12, 0.45, 6.25, LOFT + 0.14, -1.45, mat(0x7d9a80), { ry: 0.3 });
+  const ladder = new THREE.Group(); ladder.position.set(3.72, 0, -1.4); ladder.rotation.z = -0.21; scene.add(ladder);
+  for (const sd of [-1, 1]) stand(0.05, 2.95, 0.05, 0, 0, sd * 0.24, wood, { to: ladder });
+  for (let i = 1; i < 9; i++) stand(0.035, 0.035, 0.48, 0, i * 0.32, 0, wood, { to: ladder });
+  solids.push([3.68, 0, -1.7, 4.3, 2.6, -1.1]);
+}
+
+// a desk under the west window
+{
+  const x = -HX + 0.42, z = 1.8;
+  stand(0.75, 0.05, 1.5, x, 0.72, z, wood, { solid: true }); legs(0.75, 1.5, 0.72, x, z, wood, 0.06);
+  stand(0.24, 0.015, 0.34, x + 0.02, 0.77, z, mat(0x3a3d42, { roughness: 0.5 }));
+  const screen = stand(0.012, 0.22, 0.34, x - 0.14, 0.78, z, mat(0x3a3d42), { rz: 0.22 });
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.31, 0.19), new THREE.MeshBasicMaterial({ color: 0xcfe6f2 }));
+  glow.rotation.y = Math.PI / 2; glow.position.x = 0.007; screen.add(glow);
+  round(0.04, 0.035, 0.09, x + 0.1, 0.77, z + 0.45, mat(0xc9705a, { roughness: 0.4 }));
+  stand(0.2, 0.02, 0.28, x + 0.05, 0.77, z - 0.5, mat(0xf4ecdc), { ry: 0.2 }); plant(x - 0.12, 0.77, z - 0.55, 0.11);
+  chair(x + 0.75, z, 0, wood);
+  solids.push([x + 0.53, 0, z - 0.22, x + 0.97, 0.49, z + 0.22], [x + 0.93, 0.49, z - 0.22, x + 0.99, 1.01, z + 0.22]);
+  stand(0.05, 0.52, 0.44, x + 0.96, 0.49, z, wood);
+}
+
+// plants, pictures, a door
+plant(6.1, 0, 4.1, 0.42); solids.push([5.7, 0, 3.7, 6.5, 1.25, 4.5]);
+plant(-6.2, 0, -4.2, 0.34, [0x5c8650, 0x7fa56a, 0x4f7a4a]); solids.push([-6.55, 0, -4.55, -5.85, 1.0, -3.85]);
+for (const [x, s] of [[-4.45, 0.11], [4.4, 0.1], [-3.6, 0.09], [3.55, 0.12]]) plant(x, 0.895, HZ - 0.13, s, [0x7fa56a, 0x9bbf6e, 0x6f9a5a]);
+{
+  const x = -2.8, z = 3.5;                              // one hanging from a beam
+  round(0.006, 0.006, 0.55, x, 2.35, z, mat(0x8a7a5a), { cast: false, sides: 5 });
+  round(0.16, 0.11, 0.16, x, 2.2, z, mat(0xc27a52));
+  for (let i = 0; i < 8; i++) { const a = i * 0.8; ball(0.09, x + Math.cos(a) * 0.15, 2.3 - (i % 3) * 0.14, z + Math.sin(a) * 0.15, mat(pick([0x6f9a5a, 0x86ad62]), { flatShading: true }), { scale: [1, 1.4, 1] }); }
+  solids.push([x - 0.2, 1.95, z - 0.2, x + 0.2, 2.9, z + 0.2]);
+}
+function picture(x, y, z, w, h, facing, paint) {
+  const art = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat(0xffffff, { map: texture(128, paint) }));
+  const frame = facing.x ? box(0.04, h + 0.1, w + 0.1, x, y, z, dark, { cast: false }) : box(w + 0.1, h + 0.1, 0.04, x, y, z, dark, { cast: false });
+  art.position.set(x + facing.x * 0.022, y, z + facing.z * 0.022); art.rotation.y = facing.x ? facing.x * Math.PI / 2 : (facing.z < 0 ? Math.PI : 0); scene.add(art);
+  return frame;
+}
+const hillsArt = (sky, far, near) => (g, s) => {
+  g.fillStyle = sky; g.fillRect(0, 0, s, s); g.fillStyle = "#f6e2a8"; g.beginPath(); g.arc(s * 0.7, s * 0.32, 13, 0, 7); g.fill();
+  g.fillStyle = far; g.beginPath(); g.moveTo(0, s); g.lineTo(0, 76); g.quadraticCurveTo(40, 40, 78, 72); g.quadraticCurveTo(104, 52, s, 70); g.lineTo(s, s); g.fill();
+  g.fillStyle = near; g.beginPath(); g.moveTo(0, s); g.lineTo(0, 98); g.quadraticCurveTo(60, 76, s, 104); g.lineTo(s, s); g.fill();
+};
+picture(-0.3, 1.75, -HZ + 0.02, 0.6, 0.45, { x: 0, z: 1 }, hillsArt("#cfe3ea", "#8fae8a", "#5f8a66"));
+picture(-HX + 0.02, 1.7, -2.3, 0.8, 0.55, { x: 1, z: 0 }, hillsArt("#f1d9b8", "#c98f6a", "#8a5a4a"));
+picture(-HX + 0.02, 1.75, -3.4, 0.4, 0.5, { x: 1, z: 0 }, (g, s) => { g.fillStyle = "#efe6d2"; g.fillRect(0, 0, s, s); g.fillStyle = "#7a5a3c"; g.beginPath(); g.ellipse(64, 70, 26, 18, 0, 0, 7); g.fill(); g.beginPath(); g.arc(86, 54, 12, 0, 7); g.fill(); g.fillStyle = "#d99a3a"; g.fillRect(96, 52, 10, 4); });
+picture(HX - 0.02, 1.8, 0.4, 0.5, 0.65, { x: -1, z: 0 }, hillsArt("#dcd3ea", "#9a8fb5", "#5a5a7a"));
+stand(1.2, 0.02, 0.6, 6.3, 0.005, 2.7, mat(0x8f7a5a), { cast: false });
+
+// ---- outside: a garden, a meadow, and nothing to stop the bird leaving ---------------------------------------
+
+const FAR = 46;                                        // how far the bird can wander
+{
+  const g = new THREE.SphereGeometry(200, 24, 14), c = [], top = new THREE.Color(0x8fc0e6), low = new THREE.Color(0xfde9c9), col = new THREE.Color();
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { col.copy(low).lerp(top, Math.min(1, Math.max(0, p.getY(i) / 120))); c.push(col.r, col.g, col.b); }
+  g.setAttribute("color", new THREE.Float32BufferAttribute(c, 3));
+  scene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, toneMapped: false })));
+  const sunDisc = new THREE.Sprite(new THREE.SpriteMaterial({ map: soft, color: 0xfff2cf, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  sunDisc.position.copy(SUN).multiplyScalar(-180); sunDisc.scale.setScalar(60); scene.add(sunDisc);
+
+  const turf = texture(256, (g, s) => {
+    g.fillStyle = "#9cc276"; g.fillRect(0, 0, s, s);
+    for (let i = 0; i < 2600; i++) { g.fillStyle = pick(["rgba(120,165,90,.5)", "rgba(176,206,122,.45)", "rgba(96,146,82,.35)"]); g.fillRect(rand() * s, rand() * s, 2 + rand() * 6, 2 + rand() * 6); }
+  }, 70, 70);
+  const grass = new THREE.Mesh(new THREE.CircleGeometry(190, 40), mat(0xffffff, { map: turf })); grass.rotation.x = -Math.PI / 2; grass.position.y = -0.04; grass.receiveShadow = true; scene.add(grass);
+  for (let i = 0; i < 9; i++) { const a = i / 9 * 6.28 + 0.3; ball(22 + rand() * 14, Math.cos(a) * 110, -8, Math.sin(a) * 110, mat(pick([0x86ad6e, 0x93b97a, 0x7aa56a])), { scale: [2.2, 0.55, 1.4], cast: false }); }
+
+  // wildflowers
+  const fp = [], fc = [], hues = [0xffffff, 0xfff1a8, 0xf7b6c8, 0xc9a7e8, 0xffd07a].map((h) => new THREE.Color(h));
+  for (let i = 0; i < 3200; i++) {
+    const a = rand() * 6.28, d = 5 + Math.sqrt(rand()) * 50, x = Math.cos(a) * d, z = Math.sin(a) * d;
+    if (Math.abs(x) < HX + 0.6 && Math.abs(z) < HZ + 0.6) continue;
+    fp.push(x, 0.06 + rand() * 0.12, z); const h = pick(hues); fc.push(h.r, h.g, h.b);
+  }
+  const fg = new THREE.BufferGeometry(); fg.setAttribute("position", new THREE.Float32BufferAttribute(fp, 3)); fg.setAttribute("color", new THREE.Float32BufferAttribute(fc, 3));
+  scene.add(new THREE.Points(fg, new THREE.PointsMaterial({ size: 0.2, map: soft, vertexColors: true, alphaTest: 0.3 })));
+
+  // small trees, a few by the house to land in and the rest scattered out to the hills
+  const bark = mat(0x7a5a3c);
+  const distant = [];
+  const tree = (x, z, s, c, near) => {
+    if (!near) { distant.push([x, z, s, c]); return; }
+    round(0.14 * s, 0.2 * s, 1.6 * s, x, 0, z, bark, { sides: 6 });
+    const leaf = mat(c, { flatShading: true });
+    ball(1.25 * s, x, 2.6 * s, z, leaf, { scale: [1, 1.25, 1] });
+    ball(0.8 * s, x + 0.75 * s, 2.1 * s, z + 0.3 * s, leaf); ball(0.7 * s, x - 0.6 * s, 2.3 * s, z - 0.5 * s, leaf);
+    solids.push([x - 0.2 * s, 0, z - 0.2 * s, x + 0.2 * s, 1.6 * s, z + 0.2 * s], [x - 0.95 * s, 1.5 * s, z - 0.95 * s, x + 0.95 * s, 4.0 * s, z + 0.95 * s]);
+  };
+  const greens = [0x6f9a5a, 0x86ad62, 0x5c8650, 0xa9bf6a];
+  tree(6.5, 12.5, 0.85, 0x6f9a5a, true); tree(9.8, 7.4, 0.65, 0x86ad62, true); tree(-12.5, -5, 0.75, 0x5c8650, true); tree(12.5, -6.5, 0.7, 0xa9bf6a, true);
+  for (let i = 0; i < 170; i++) {
+    const a = rand() * 6.28, d = 16 + Math.pow(rand(), 0.8) * 86, x = Math.cos(a) * d, z = Math.sin(a) * d;
+    if (x < 5 && z > -2 && d < 30) continue;                                   // nothing between the house and the sun
+    tree(x, z, 0.4 + rand() * 0.45, pick(greens), d < FAR + 2);
+  }
+  const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.14, 0.2, 1.6, 6), bark, distant.length);
+  const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.25, 1), mat(0xffffff, { flatShading: true }), distant.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), tint = new THREE.Color();
+  distant.forEach(([x, z, s, c], i) => {
+    trunks.setMatrixAt(i, m4.compose(new THREE.Vector3(x, 0.8 * s, z), q, new THREE.Vector3(s, s, s)));
+    crowns.setMatrixAt(i, m4.compose(new THREE.Vector3(x, 2.6 * s, z), q, new THREE.Vector3(s, 1.25 * s, s)));
+    crowns.setColorAt(i, tint.set(c));
+  });
+  scene.add(trunks, crowns);
+
+  // a white fence with a gap for the gate, a path to it, a birdbath
+  const paint = mat(0xf4ecdc);
+  const fence = (x0, z0, x1, z1) => {
+    const len = Math.hypot(x1 - x0, z1 - z0), across = x0 !== x1, n = Math.round(len / 1.4);
+    for (const y of [0.42, 0.78]) across ? box(len, 0.07, 0.04, (x0 + x1) / 2, y, z0, paint) : box(0.04, 0.07, len, x0, y, (z0 + z1) / 2, paint);
+    for (let i = 0; i <= n; i++) stand(0.08, 0.95, 0.08, x0 + (x1 - x0) * i / n, 0, z0 + (z1 - z0) * i / n, paint);
+    solids.push(across ? [x0, 0, z0 - 0.04, x1, 0.82, z0 + 0.04] : [x0 - 0.04, 0, z0, x0 + 0.04, 0.82, z1]);
+  };
+  fence(-11, -9, 11, -9); fence(-11, 9, -0.9, 9); fence(0.9, 9, 11, 9); fence(-11, -9, -11, 9); fence(11, -9, 11, 9);
+  const slab = mat(0xcfc4b0, { flatShading: true });
+  stand(2.4, 0.07, 0.7, 0, 0, HZ + T + 0.35, slab, { cast: false }); stand(0.7, 0.07, 1.3, HX + T + 0.35, 0, 2.7, slab, { cast: false });
+  for (let i = 0; i < 11; i++) { const r = 0.3 + rand() * 0.1; round(r, r, 0.03, (rand() - 0.5) * 0.4, 0, 6.5 + i * 0.75, slab, { cast: false, sides: 9 }); }
+  round(0.12, 0.2, 0.7, 3.6, 0, 7.6, slab, { solid: true, sides: 10 }); round(0.5, 0.3, 0.13, 3.6, 0.7, 7.6, slab, { solid: true, sides: 16 });
+  round(0.43, 0.43, 0.01, 3.6, 0.826, 7.6, mat(0x9fd0e0, { roughness: 0.15 }), { cast: false, sides: 16 });
+
+  // clouds
+  const puff = mat(0xffffff, { emissive: 0xfff3e2, emissiveIntensity: 0.55, flatShading: true });
+  for (let i = 0; i < 10; i++) {
+    const a = rand() * 6.28, d = 60 + rand() * 70, x = Math.cos(a) * d, y = 36 + rand() * 18, z = Math.sin(a) * d;
+    for (let k = 0; k < 4; k++) ball(5 + rand() * 4, x + (k - 1.5) * 6, y + rand() * 2, z + rand() * 4, puff, { scale: [1.5, 0.6, 1], cast: false });
+  }
+}
+
+// ---- light -------------------------------------------------------------------------------------------
+
+scene.add(new THREE.HemisphereLight(0xfff3df, 0xd0a880, 1.0), new THREE.AmbientLight(0xffe6c8, 0.45));
+const sunLight = new THREE.DirectionalLight(0xffdfae, 5.2);
+sunLight.position.copy(SUN).multiplyScalar(-45); sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(TOUCH ? 2048 : 4096, TOUCH ? 2048 : 4096);
+Object.assign(sunLight.shadow.camera, { left: -24, right: 24, top: 22, bottom: -22, near: 4, far: 95 });
+sunLight.shadow.bias = -0.0004; sunLight.shadow.normalBias = 0.03; sunLight.shadow.radius = 3;
+scene.add(sunLight);
+const bounce = new THREE.PointLight(0xffd9a0, 5, 10, 1.6); bounce.position.set(1.5, 0.35, 2.4); scene.add(bounce);   // sunlight coming back up off the floor
+const fire = new THREE.PointLight(0xff8a3c, 1.6, 5, 1.8); fire.position.set(-2, 0.35, -HZ + 0.75); scene.add(fire);
+
+// Shafts of light from every pane to wherever the sun lands, and dust hanging in them.
+const reach = (p) => Math.min(p.y / -SUN.y, (p.z + HZ) / -SUN.z, (HX - p.x) / SUN.x);
+{
+  const pos = [], col = [], near = new THREE.Color(1, 0.86, 0.6).multiplyScalar(0.011), far = near.clone().multiplyScalar(0.3);
+  const put = (v, c) => { pos.push(v.x, v.y, v.z); col.push(c.r, c.g, c.b); };
+  for (const pane of panes) pane.forEach((a, i) => {
+    const b = pane[(i + 1) % pane.length], a2 = a.clone().addScaledVector(SUN, reach(a)), b2 = b.clone().addScaledVector(SUN, reach(b));
+    put(a, near); put(b, near); put(b2, far); put(a, near); put(b2, far); put(a2, far);
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  scene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false })));
+}
+const DUST = 420, dustHome = new Float32Array(DUST * 3), dustGeo = new THREE.BufferGeometry();
+{
+  const rects = panes.filter((p) => p.length === 4);
+  for (let i = 0; i < DUST; i++) {
+    const p = pick(rects), u = rand(), v = rand();
+    const a = p[0].clone().lerp(p[1], u).lerp(p[3].clone().lerp(p[2], u), v);
+    a.addScaledVector(SUN, reach(a) * (0.05 + rand() * 0.9));
+    dustHome.set([a.x, a.y, a.z], i * 3);
+  }
+  dustGeo.setAttribute("position", new THREE.Float32BufferAttribute(dustHome.slice(), 3));
+  scene.add(new THREE.Points(dustGeo, new THREE.PointsMaterial({ map: soft, size: 0.035, color: 0xffe2b0, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false })));
+}
+
+// ---- the bubble machine: it never stops, and every bubble the bird pops is the next word ------------------------
+
+const MACHINE = new THREE.Vector3(1.2, 0, 3.4), BLOW = new THREE.Vector3(-0.6, 0.6, -0.5).normalize();
+const MOUTH = MACHINE.clone().setY(0.72).addScaledVector(BLOW, 0.26), wheel = new THREE.Group();
+{
+  const { x, z } = MACHINE, teal = mat(0x4fa3a0, { roughness: 0.45 }), cream = mat(0xf2ead8, { roughness: 0.5 });
+  round(0.21, 0.21, 0.04, x, 0.42, z, wood, { sides: 18 });
+  for (let i = 0; i < 3; i++) round(0.02, 0.026, 0.42, x + Math.cos(i * 2.1) * 0.14, 0, z + Math.sin(i * 2.1) * 0.14, wood, { sides: 6 });
+  stand(0.34, 0.2, 0.24, x, 0.46, z, teal); stand(0.37, 0.03, 0.27, x, 0.66, z, cream);
+  ball(0.022, x + 0.1, 0.56, z + 0.125, mat(0xe9645a), { smooth: true, cast: false }); ball(0.022, x + 0.03, 0.56, z + 0.125, cream, { smooth: true, cast: false });
+  const head = new THREE.Group(); head.position.set(x, 0.7, z); head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), BLOW); scene.add(head);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.1, 0.2, 22, 1, true), mat(0x4fa3a0, { roughness: 0.45, side: THREE.DoubleSide }));
+  tube.position.y = 0.08; tube.castShadow = true; head.add(tube);
+  wheel.position.y = 0.17; head.add(wheel);                             // a wheel of wands turning in its mouth
+  for (let i = 0; i < 6; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.036, 0.006, 6, 16), cream);
+    ring.position.set(Math.cos(i * 1.047) * 0.08, 0, Math.sin(i * 1.047) * 0.08); ring.rotation.x = Math.PI / 2; wheel.add(ring);
+  }
+  solids.push([x - 0.22, 0, z - 0.22, x + 0.22, 0.82, z + 0.22]);
+}
+
+// Is this spot in direct sun? Follow the light back to the wall it came through and see if there's an opening there.
+function inSun(p) {
+  if (Math.abs(p.x) > HX + T || Math.abs(p.z) > HZ + T || p.y > roofAt(p.z) + 0.4) return 1;      // out of doors
+  const ts = (HZ - p.z) / -SUN.z, tw = (p.x + HX) / SUN.x;
+  const xs = p.x - SUN.x * ts, ys = p.y - SUN.y * ts, zw = p.z - SUN.z * tw, yw = p.y - SUN.y * tw;
+  for (const h of sunHoles)
+    if (h.along === "x" ? xs > -HX && Math.abs(xs - h.c) < h.w / 2 && ys > h.y0 && ys < h.y1 : zw < HZ && Math.abs(zw - h.c) < h.w / 2 && yw > h.y0 && yw < h.y1) return 1;
+  return zw < HZ && Math.hypot(yw - PORT.y, zw) < PORT.r ? 1 : 0;
+}
+
+// The slow air of the room: a draught in from the doors, warm air rising, and lazy eddies that never repeat.
+function wind(p, t, out) {
+  return out.set(-0.10 + 0.17 * Math.sin(p.z * 0.6 + t * 0.13) + 0.09 * Math.sin(p.y * 1.3 + t * 0.31),
+                  0.07 * Math.sin(p.x * 0.7 + t * 0.21) + 0.05 * Math.sin(p.z * 1.1 - t * 0.17),
+                 -0.15 + 0.15 * Math.sin(p.x * 0.5 - t * 0.17) + 0.09 * Math.cos(p.y * 1.1 + t * 0.23));
+}
+
+// Soap film. Its colours come from how thick it is: thin at the top, pooling at the bottom, stirred by slow swirls.
+// It mirrors the bright windows and the warm room, and in a shaft of sun it blazes.
+const BUBBLE_VERT = `
+  uniform float t; uniform vec3 wob; varying vec3 wN, wP, oN;
+  void main() {
+    vec3 n = normal;
+    float bulge = wob.x * (1.5 * n.y * n.y - 0.5) * sin(t * wob.z) + wob.y * (n.x * n.x - n.z * n.z) * sin(t * wob.z * 1.37 + 1.3) + wob.y * 0.6 * n.x * n.y * sin(t * wob.z * 1.9 + 2.1);
+    vec4 w = modelMatrix * vec4(position * (1.0 + bulge), 1.0);
+    wP = w.xyz; wN = normalize(mat3(modelMatrix) * n); oN = n;
+    gl_Position = projectionMatrix * viewMatrix * w;
+  }`;
+const BUBBLE_FRAG = `
+  uniform float fade, t, sun, seed; uniform vec3 sunDir; varying vec3 wN, wP, oN;
+  void main() {
+    vec3 N = normalize(wN), V = normalize(cameraPosition - wP);
+    if (!gl_FrontFacing) N = -N;
+    float c = clamp(dot(N, V), 0.0, 1.0), fresnel = 0.03 + 0.97 * pow(1.0 - c, 3.0);
+    float swirl = sin(oN.x * 5.0 + t * 0.7 + seed) * sin(oN.y * 4.0 - t * 0.5 + seed * 1.7) + 0.5 * sin(oN.z * 9.0 + oN.x * 6.0 + t * 1.1 + seed) + 0.3 * sin(oN.y * 17.0 + oN.z * 11.0 - t * 1.6);
+    float thick = 240.0 + 420.0 * (0.5 - 0.5 * oN.y) + 150.0 * swirl;                    // nanometres
+    float inside = sqrt(1.0 - (1.0 - c * c) / (1.33 * 1.33));
+    vec3 film = 0.5 - 0.5 * cos(12.566 * 1.33 * thick * inside / vec3(650.0, 530.0, 450.0));   // interference, one wavelength per colour
+    vec3 R = reflect(-V, N);
+    float panes = 0.55 + 0.45 * step(0.0, sin(R.x * 13.0)) * step(0.0, sin(R.y * 13.0 + 1.0));
+    float windows = smoothstep(0.45, 0.85, R.z) * smoothstep(-0.3, 0.05, R.y) * smoothstep(0.75, 0.35, R.y) * panes + 0.8 * smoothstep(0.6, 0.9, -R.x) * smoothstep(-0.25, 0.05, R.y) * smoothstep(0.7, 0.3, R.y);
+    vec3 room = mix(vec3(0.5, 0.33, 0.2), vec3(1.0, 0.9, 0.75), smoothstep(-0.5, 0.7, R.y)) * 0.4 + vec3(1.0, 0.96, 0.85) * windows * 1.5;
+    float glint = (pow(max(dot(R, sunDir), 0.0), 260.0) * 7.0 + pow(max(dot(R, sunDir), 0.0), 18.0) * 0.45) * sun;
+    vec3 col = film * room * (0.75 + 1.5 * sun) + film * fresnel * (0.55 + 0.9 * sun) + vec3(1.0, 0.97, 0.9) * fresnel * 0.16 + glint;
+    gl_FragColor = vec4(col * fade, (0.03 + fresnel * 0.22) * fade);
+  }`;
+
+const MAXB = 64, bubbleGeo = new THREE.SphereGeometry(1, 40, 28), spotGeo = new THREE.PlaneGeometry(1, 1);
+const ringTex = texture(128, (g, s) => {                     // the bright rim a bubble's shadow has, split into colours
+  const c = s / 2, r = g.createRadialGradient(c, c, 0, c, c, c);
+  [[0, "rgba(255,248,230,.6)"], [0.14, "rgba(255,248,230,0)"], [0.6, "rgba(255,255,255,0)"], [0.74, "rgba(110,150,255,.55)"], [0.82, "rgba(130,255,170,.7)"],
+   [0.9, "rgba(255,232,120,.85)"], [0.96, "rgba(255,120,90,.5)"], [1, "rgba(255,90,90,0)"]].forEach(([at, col]) => r.addColorStop(at, col));
+  g.fillStyle = r; g.fillRect(0, 0, s, s);
+});
+const pool = Array.from({ length: MAXB }, (_, i) => {
+  const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, vertexShader: BUBBLE_VERT, fragmentShader: BUBBLE_FRAG,
+    blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+    uniforms: { fade: { value: 1 }, t: { value: 0 }, sun: { value: 0 }, seed: { value: i * 1.7 }, wob: { value: new THREE.Vector3() }, sunDir: { value: SUN.clone().negate() } } });
+  const mesh = new THREE.Mesh(bubbleGeo, m); mesh.visible = false; mesh.renderOrder = 2; scene.add(mesh);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: soft, color: 0xffe6b8, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+  halo.scale.setScalar(3.6); mesh.add(halo);
+  const spot = new THREE.Mesh(spotGeo, new THREE.MeshBasicMaterial({ map: ringTex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0, toneMapped: false }));
+  spot.rotation.order = "YXZ"; spot.rotation.set(-Math.PI / 2, Math.atan2(-SUN.x, -SUN.z), 0); spot.visible = false; spot.renderOrder = 1; scene.add(spot);
+  return { mesh, m, halo, spot, vel: new THREE.Vector3(), r: 0.1, age: 0, life: 0, alive: false, popAt: -1, lit: 0, wobble: 0 };
+});
+
+// droplets, for when one bursts
+const DROPS = 600, dropAt = new Float32Array(DROPS * 3).fill(-99), dropVel = new Float32Array(DROPS * 3), dropLife = new Float32Array(DROPS), dropGeo = new THREE.BufferGeometry();
+dropGeo.setAttribute("position", new THREE.BufferAttribute(dropAt, 3));
+const drops = new THREE.Points(dropGeo, new THREE.PointsMaterial({ map: soft, size: 0.035, color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+drops.frustumCulled = false; scene.add(drops);
+let dropNext = 0;
+
+// The quick way: the laptop on the desk has the whole resume. Fly to it and the rest arrives at once.
+const LAPTOP = new THREE.Vector3(-HX + 0.45, 0.95, 1.8), NEAR_IT = new THREE.Vector3(-HX + 0.7, 1.2, 1.8);
+const beacon = new THREE.Sprite(new THREE.SpriteMaterial({ map: soft, color: 0xbfe6ff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.8 }));
+beacon.position.copy(LAPTOP).setY(1.12); scene.add(beacon);
+let rushing = false, clock = 0, puff = 0;
+const air = new THREE.Vector3(), aside = new THREE.Vector3();
+
+function blow() {
+  const b = pool.find((x) => !x.alive); if (!b) return;
+  const j = () => (Math.random() - 0.5);
+  b.alive = true; b.popAt = -1; b.age = 0; b.life = 16 + Math.random() * 14; b.r = 0.07 + Math.random() ** 2 * 0.13; b.wobble = 1; b.lit = 0;
+  b.mesh.position.copy(MOUTH).add(aside.set(j() * 0.1, j() * 0.06, j() * 0.1));
+  b.vel.copy(BLOW).multiplyScalar(0.8 + Math.random() * 0.8).add(aside.set(j() * 0.5, j() * 0.3, j() * 0.5));
+  b.m.uniforms.fade.value = 1; b.mesh.visible = true;
+}
+
+function burst(b) {
+  if (b.popAt >= 0) return;
+  b.popAt = 0; b.halo.material.opacity = 0; b.spot.visible = false;
+  const p = b.mesh.position;
+  for (let k = 0; k < 14; k++) {
+    const i = dropNext++ % DROPS, u = Math.random() * 2 - 1, a = Math.random() * 6.283, q = Math.sqrt(1 - u * u), v = 0.5 + Math.random() * 1.1;
+    dropAt.set([p.x + q * Math.cos(a) * b.r, p.y + u * b.r, p.z + q * Math.sin(a) * b.r], i * 3);
+    dropVel.set([q * Math.cos(a) * v, u * v + 0.3, q * Math.sin(a) * v], i * 3); dropLife[i] = 0.35 + Math.random() * 0.3;
+  }
+}
+
+function give(from) {                                    // the next word
+  if (state !== "playing" || eaten >= WORDS.length) return;
+  eaten++; renderLine(from);
+  if (eaten === WORDS.length) win();
+}
+
+function bubblesTick(now, dt) {
+  clock += dt; wheel.rotation.y += dt * 2.6;
+  puff -= dt;
+  if (puff <= 0) { puff = 0.26 + Math.random() * 0.3; blow(); if (Math.random() < 0.4) blow(); }
+  const playing = state === "playing", ease = (k) => 1 - Math.exp(-k * dt);
+  for (const b of pool) {
+    if (!b.alive) continue;
+    const p = b.mesh.position, u = b.m.uniforms;
+    if (b.popAt >= 0) {                                 // gone in a blink
+      b.popAt += dt; const k = b.popAt / 0.14;
+      if (k >= 1) { b.alive = false; b.mesh.visible = false; } else { b.mesh.scale.setScalar(b.r * (1 + k * 0.45)); u.fade.value = 1 - k; }
+      continue;
+    }
+    b.age += dt;
+    wind(p, clock, air); air.y += (0.2 - b.r) * 0.25 + (1.55 + (b.m.uniforms.seed.value % 1.3) - p.y) * 0.1;      // each finds its own height; small ones ride higher
+    const toBird = p.distanceTo(pos);
+    if (playing && toBird < 1.1) { air.addScaledVector(aside.copy(pos).sub(p).normalize(), 1.0); b.wobble = Math.max(b.wobble, 0.45); }   // drawn into the bird's wake: a near miss still counts
+    b.vel.lerp(air, ease(1.4)); p.addScaledVector(b.vel, dt);
+    b.wobble *= Math.exp(-0.8 * dt);
+    b.mesh.scale.setScalar(b.r * (0.25 + 0.75 * Math.min(1, b.age / 0.35)));
+    u.t.value = clock; u.wob.value.set(0.2 * b.wobble + 0.02, 0.15 * b.wobble + 0.015, 9 / (0.5 + b.r * 6));
+    b.lit += (inSun(p) - b.lit) * ease(8); u.sun.value = b.lit; b.halo.material.opacity = 0.08 + 0.42 * b.lit;
+    const down = p.y / -SUN.y, sx = p.x + SUN.x * down, sz = p.z + SUN.z * down, indoors = Math.abs(p.x) < HX && Math.abs(p.z) < HZ;
+    b.spot.visible = b.lit > 0.03 && (!indoors || (Math.abs(sx) < HX && Math.abs(sz) < HZ));       // the rainbow ring it throws on the floor
+    if (b.spot.visible) { b.spot.position.set(sx, 0.02, sz); b.spot.scale.set(b.r * 2.7, b.r * 2.7 / -SUN.y, 1); b.spot.material.opacity = b.lit * 0.6; }
+    if (playing && toBird < b.r + 0.3) { burst(b); give(p); continue; }
+    if (b.age > b.life || (b.age > 0.7 && !free(p, b.r * 0.75)) || p.y > 28 || Math.hypot(p.x, p.z) > FAR + 6) burst(b);
+  }
+  // when two touch: usually they nudge apart, now and then they join into a bigger one
+  for (let i = 0; i < MAXB; i++) for (let j = i + 1; j < MAXB; j++) {
+    const a = pool[i], b = pool[j];
+    if (!a.alive || !b.alive || a.popAt >= 0 || b.popAt >= 0) continue;
+    const d = a.mesh.position.distanceTo(b.mesh.position), reach = (a.r + b.r) * 0.92;
+    if (d >= reach) continue;
+    const big = a.r >= b.r ? a : b, small = big === a ? b : a;
+    if (Math.min(a.age, b.age) > 1.5 && big.r < 0.27 && Math.random() < dt * 2.5) {
+      big.vel.lerp(small.vel, small.r ** 3 / (big.r ** 3 + small.r ** 3)); big.r = Math.cbrt(big.r ** 3 + small.r ** 3); big.wobble = 1;
+      small.alive = false; small.mesh.visible = false; small.spot.visible = false;
     } else {
-      state = "ready"; placeActors();
-      titleEl.textContent = lives === 1 ? "Last life." : `${lives} lives left.`;
-      subEl.textContent = ON;
+      aside.copy(a.mesh.position).sub(b.mesh.position).normalize().multiplyScalar((reach - d) * 2);
+      a.vel.add(aside); b.vel.sub(aside); a.wobble = Math.max(a.wobble, 0.3); b.wobble = Math.max(b.wobble, 0.3);
     }
-    overlay.hidden = false;
   }
-
-  function win() {
-    state = "won"; endAt = performance.now(); overlay.hidden = true;
-    setTimeout(transpose, 950);              // let the last word land in the line first
+  for (let i = 0; i < DROPS; i++) {
+    if (dropLife[i] <= 0) continue;
+    dropLife[i] -= dt; dropVel[i * 3 + 1] -= 3.5 * dt;
+    if (dropLife[i] <= 0) dropAt[i * 3 + 1] = -99; else for (let k = 0; k < 3; k++) dropAt[i * 3 + k] += dropVel[i * 3 + k] * dt;
   }
+  dropGeo.attributes.position.needsUpdate = true;
 
-  function start() {
-    if (state === "playing") return;
-    if (state === "over" || state === "won") newGame();
-    state = "playing"; overlay.hidden = true;
+  beacon.visible = eaten < WORDS.length; beacon.scale.setScalar(0.8 + Math.sin(now / 420) * 0.14);
+  if (playing && !rushing && eaten < WORDS.length && pos.distanceTo(NEAR_IT) < 1.3) {
+    rushing = true;
+    const left = WORDS.length - eaten;
+    for (let k = 0; k < left; k++) setTimeout(() => {
+      const b = pool.find((x) => x.alive && x.popAt < 0);
+      if (b) burst(b); give(b ? b.mesh.position : LAPTOP);
+      if (k === left - 1) rushing = false;
+    }, k * 70);
   }
+}
 
-  // ---- drawing -----------------------------------------------------------------------------------
+// ---- the bird ----------------------------------------------------------------------------------------
 
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+const bird = new THREE.Group(), body = new THREE.Group(); bird.add(body); scene.add(bird);
+const wings = [];
+{
+  const brown = mat(0x8a5c3a), cap = mat(0x6b4226), belly = mat(0xeadcc2), black = mat(0x1c1714, { roughness: 0.3 });
+  const part = (geo, m, x, y, z, s) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); if (s) o.scale.set(...s); o.castShadow = true; body.add(o); return o; };
+  part(new THREE.SphereGeometry(0.07, 16, 12), brown, 0, 0, 0, [1, 0.95, 1.7]);
+  part(new THREE.SphereGeometry(0.066, 16, 12), belly, 0, -0.016, 0.012, [0.95, 0.9, 1.6]);
+  part(new THREE.SphereGeometry(0.052, 16, 12), cap, 0, 0.04, 0.105);
+  part(new THREE.SphereGeometry(0.04, 12, 10), belly, 0, 0.022, 0.125, [1.15, 0.8, 0.9]);
+  for (const s of [-1, 1]) part(new THREE.SphereGeometry(0.0095, 8, 6), black, s * 0.036, 0.05, 0.135);
+  part(new THREE.ConeGeometry(0.014, 0.045, 6), mat(0xd9a03a), 0, 0.034, 0.168).rotation.x = Math.PI / 2;
+  const flat = (pts) => { const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y))), { depth: 0.012, bevelEnabled: false }); g.rotateX(Math.PI / 2); return g; };
+  part(flat([[-0.022, 0], [0.022, 0], [0.05, -0.15], [0, -0.135], [-0.05, -0.15]]), cap, 0, 0.02, -0.085).rotation.x = -0.1;
+  const wingGeo = flat([[0, 0.07], [0.1, 0.07], [0.19, 0.03], [0.205, -0.02], [0.15, -0.075], [0.08, -0.1], [0, -0.085]]);
+  for (const s of [1, -1]) {
+    const hinge = new THREE.Group(); hinge.position.set(s * 0.04, 0.035, 0.02);
+    const w = new THREE.Mesh(wingGeo, mat(0x7d5030, { side: THREE.DoubleSide })); w.scale.x = s; w.castShadow = true; hinge.add(w);
+    body.add(hinge); wings.push({ hinge, s });
   }
+  bird.scale.setScalar(1.35);
+}
 
-  function drawMaze(alpha) {
-    ctx.globalAlpha = alpha;
-    // Walls are thick strokes joining the centres of neighbouring wall squares: one solid shape, rounded ends.
-    ctx.strokeStyle = colors.wall; ctx.fillStyle = colors.wall;
-    ctx.lineWidth = cell * 0.5; ctx.lineCap = "round"; ctx.lineJoin = "round";
-    const c = (v) => v * cell + cell / 2, wall = (x, y) => y >= 0 && y < ROWS && x >= 0 && x < COLS && MAZE[y][x] === "#";
-    ctx.beginPath();
-    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-      if (!wall(x, y)) continue;
-      if (wall(x + 1, y)) { ctx.moveTo(c(x), c(y)); ctx.lineTo(c(x + 1), c(y)); }
-      if (wall(x, y + 1)) { ctx.moveTo(c(x), c(y)); ctx.lineTo(c(x), c(y + 1)); }
-      if (!wall(x + 1, y) && !wall(x - 1, y) && !wall(x, y + 1) && !wall(x, y - 1)) { ctx.moveTo(c(x), c(y)); ctx.lineTo(c(x) + 0.01, c(y)); }
-    }
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+function size() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.fov = w < h ? 72 : 55; camera.updateProjectionMatrix();
+}
+
+// ---- words ---------------------------------------------------------------------------------------------
+
+let state = "ready", eaten = 0, last, endAt, restAt = -1e9, locked = false;
+
+function renderLine(from) {
+  for (let i = lineEl.children.length; i < eaten; i++) {
+    if (i) lineEl.append(" ");
+    const s = document.createElement("span"); s.textContent = WORDS[i]; lineEl.append(s);
+    if (from) fly(s, from); else s.className = "landed";
   }
+  countEl.textContent = `${eaten}/${WORDS.length}`; hudEl.classList.toggle("empty", !eaten);
+}
 
-  function drawDots(now) {
-    const r = Math.max(2.5, cell * 0.13), pulse = 1 + 0.12 * Math.sin(now / 220);
-    ctx.fillStyle = colors.dot;
-    for (const d of dots) if (d) { ctx.beginPath(); ctx.arc(d.x * cell + cell / 2, d.y * cell + cell / 2, r * pulse, 0, Math.PI * 2); ctx.fill(); }
-  }
+// The word leaves the bubble, arcs across the screen and lands in its place in the line.
+const middle = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
 
-  function drawPlayer(now) {
-    const p = pos(player), cx = p.x * cell + cell / 2, cy = p.y * cell + cell / 2, s = cell * 0.78;
-    const moving = !!player.dir && state === "playing";
-    const mouth = moving ? 0.25 + 0.75 * Math.abs(Math.sin(now / 75)) : 0.4;   // the chomp
-    ctx.save(); ctx.translate(cx, cy); ctx.rotate(ANGLE[player.face]);
-    // body with a notch for a mouth, drawn as one shape so nothing behind it shows through
-    const m = s * 0.46 * mouth, h = s / 2, rr = s * 0.28;
-    ctx.fillStyle = colors.player;
-    ctx.beginPath();
-    ctx.moveTo(h, -m); ctx.lineTo(s * 0.04, 0); ctx.lineTo(h, m);
-    ctx.arcTo(h, h, -h, h, rr); ctx.arcTo(-h, h, -h, -h, rr); ctx.arcTo(-h, -h, h, -h, rr); ctx.arcTo(h, -h, h, -m, Math.min(rr, h - m));
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = colors.bg;                                                  // an eye
-    ctx.beginPath(); ctx.arc(-s * 0.06, -s * 0.24, s * 0.075, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-  }
+function flight(text, from, to, { s0 = 1, s1 = 1, pop = false, delay = 0, dur = 850, done }) {
+  const f = document.createElement("div"); f.className = "fly"; f.textContent = text;
+  document.body.append(f);
+  const put = (x, y, s, r) => `translate(${x}px, ${y}px) translate(-50%, -50%) scale(${s}) rotate(${r}deg)`;
+  const lift = Math.min(90, 30 + Math.abs(to.y - from.y) * 0.25);
+  const frames = pop
+    ? [{ transform: put(from.x, from.y, 0.3, -8), opacity: 0 },
+       { transform: put(from.x, from.y - 18, 1.5, 4), opacity: 1, offset: 0.22 }]
+    : [{ transform: put(from.x, from.y, s0, 0), opacity: 1 }];
+  frames.push({ transform: put((from.x + to.x) / 2, Math.min(from.y, to.y) - lift, (s0 + s1) / 2 * 1.15, -3), opacity: 1, offset: 0.6 },
+              { transform: put(to.x, to.y, s1, 0), opacity: 1 });
+  const a = f.animate(frames, { duration: dur, delay, easing: "cubic-bezier(.25,.6,.3,1)", fill: "backwards" });
+  a.onfinish = () => { f.remove(); done && done(); };
+  return a;
+}
 
-  function drawBug(b, now) {
-    const p = pos(b), cx = p.x * cell + cell / 2, cy = p.y * cell + cell / 2, s = cell * 0.34;
-    const wig = Math.sin(now / 55 + b.speed * 10) * 0.35;
-    ctx.save(); ctx.translate(cx, cy); ctx.rotate(ANGLE[b.face]);
-    ctx.strokeStyle = colors[b.color]; ctx.lineWidth = Math.max(1.5, cell * 0.06); ctx.lineCap = "round";
-    for (const side of [-1, 1]) for (const k of [-0.6, 0, 0.6]) {            // six legs, scuttling
-      const w = k === 0 ? wig : -wig;
-      ctx.beginPath(); ctx.moveTo(k * s, side * s * 0.5); ctx.lineTo(k * s + w * s, side * s * 1.25); ctx.stroke();
-    }
-    for (const side of [-1, 1]) {                                               // antennae
-      ctx.beginPath(); ctx.moveTo(s * 0.9, side * s * 0.25); ctx.lineTo(s * 1.45, side * s * 0.75); ctx.stroke();
-    }
-    ctx.fillStyle = colors[b.color];
-    ctx.beginPath(); ctx.ellipse(0, 0, s * 1.05, s * 0.72, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = colors.bg; ctx.lineWidth = Math.max(1, cell * 0.035);
-    ctx.beginPath(); ctx.moveTo(-s * 0.9, 0); ctx.lineTo(s * 0.55, 0); ctx.stroke();   // where the wings meet
-    ctx.restore();
-  }
+function fly(span, from) {                              // from the bubble to its place in the line
+  span.style.visibility = "hidden";
+  let p = from.clone().project(camera);
+  if (p.z > 1 || Math.abs(p.x) > 1 || Math.abs(p.y) > 1) p = pos.clone().project(camera);      // popped out of sight: it comes from the bird
+  flight(span.textContent, { x: (p.x + 1) / 2 * window.innerWidth, y: (1 - p.y) / 2 * window.innerHeight }, middle(span.getBoundingClientRect()),
+         { pop: true, dur: 1000, done: () => { span.style.visibility = ""; span.className = "landed"; } });
+}
 
-  function drawWin(now) {
-    const t = (now - endAt) / 1000;
-    drawMaze(Math.max(0.08, 1 - t * 1.2));
-    if (t < 0.9) { ctx.globalAlpha = 1 - t / 0.9; drawPlayer(now); ctx.globalAlpha = 1; }
-  }
-
-  function draw(now) {
-    ctx.fillStyle = colors.bg; ctx.fillRect(0, 0, W, H);
-    if (state === "won") return drawWin(now);
-    drawMaze(1); drawDots(now);
-    for (const b of bugs) drawBug(b, now);
-    drawPlayer(now);
-  }
-
-  function frame(now) {
-    const dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
-    if (state === "playing") update(dt);
-    draw(now);
-    requestAnimationFrame(frame);
-  }
-
-  // ---- input -------------------------------------------------------------------------------------
-
-  const KEYS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
-                 w: "up", s: "down", a: "left", d: "right", W: "up", S: "down", A: "left", D: "right" };
-  const settled = () => state !== "won" || performance.now() - endAt > 950 + WORDS.length * 55 + 1000;
-
-  function steer(d) {
-    if (!settled()) return;
-    if (state !== "playing") start();
-    if (player.dir && d === OPP[player.dir]) {
-      // turning straight back is allowed at any moment
-      player.x = wrap(player.x + DIRS[player.dir][0]); player.y += DIRS[player.dir][1];
-      player.t = 1 - player.t; player.dir = d; player.face = d; player.next = null;
-      return;
-    }
-    player.next = d; player.nextAt = performance.now();
-  }
-
-  addEventListener("keydown", (e) => {
-    const d = KEYS[e.key];
-    if (d) { e.preventDefault(); steer(d); return; }
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key === " ") e.preventDefault();
-    if (state !== "playing" && settled()) start();
+// the line -> the whole resume, across the screen
+function transpose() {
+  const p = document.createElement("p"), note = document.createElement("small");
+  note.textContent = TOUCH ? "tap to keep flying" : "click or press a key to keep flying";
+  const spots = WORDS.map((w, i) => {
+    if (i) p.append(" ");
+    const s = document.createElement("span"); s.textContent = w; s.style.visibility = "hidden"; p.append(s); return s;
   });
-
-  // While you play, a swipe anywhere on the screen steers and the page doesn't scroll under your thumb.
-  // Keep the finger down and swipe again to turn again.
-  let t0 = null, swiped = false;
-  const stage = document.getElementById("stage");
-  const ownsTouch = (e) => state === "playing" || stage.contains(e.target);
-  document.addEventListener("touchstart", (e) => {
-    if (!ownsTouch(e)) { t0 = null; return; }
-    const t = e.touches[0]; t0 = { x: t.clientX, y: t.clientY }; swiped = false;
-  }, { passive: true });
-  document.addEventListener("touchmove", (e) => {
-    if (!t0) return;
-    e.preventDefault();
-    const t = e.touches[0], dx = t.clientX - t0.x, dy = t.clientY - t0.y;
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < 18) return;
-    steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
-    t0 = { x: t.clientX, y: t.clientY }; swiped = true;
-  }, { passive: false });
-  document.addEventListener("touchend", () => {
-    if (t0 && !swiped && state !== "playing" && settled()) start();
-    t0 = null;
+  finalEl.innerHTML = ""; finalEl.append(p, note); finalEl.hidden = false;
+  const scale = parseFloat(getComputedStyle(p).fontSize) / parseFloat(getComputedStyle(lineEl).fontSize);
+  [...lineEl.querySelectorAll("span")].forEach((src, i) => {
+    const a = middle(src.getBoundingClientRect()), b = middle(spots[i].getBoundingClientRect());
+    flight(WORDS[i], a, b, { s0: 1, s1: scale, delay: i * 55, dur: 900,
+      done: () => { spots[i].style.visibility = ""; if (i === WORDS.length - 1) note.classList.add("on"); } });
+    setTimeout(() => { src.style.visibility = "hidden"; }, i * 55);
   });
-  overlay.addEventListener("click", start);
-  canvas.addEventListener("click", () => { if (state !== "playing" && settled()) start(); });
+}
 
-  addEventListener("resize", size);
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
+// ---- flying ----------------------------------------------------------------------------------------------
 
-  readColors(); size(); newGame();
+const pos = new THREE.Vector3(3.45, 0.8 + R + 0.002, 2.3);            // it starts on the table, in the sun, looking down the room
+let yaw = -1.6, pitch = 0, yawWant = yaw, pitchWant = 0, speed = 0, sink = 0, bank = 0, flap = 0, perched = true;
+let amp = 0, lean = 0, fold = 1;                        // wing beat, body tilt, how tucked the wings are: all eased, so nothing snaps
+let touching = false, pressing = false, lastLook = -1e9;
+const keys = new Set(), held = (...names) => names.some((n) => keys.has(n));
+
+function free(p, r = R) {
+  for (const s of solids) if (p.x > s[0] - r && p.x < s[3] + r && p.y > s[1] - r && p.y < s[4] + r && p.z > s[2] - r && p.z < s[5] + r) return false;
+  const ax = Math.abs(p.x), az = Math.abs(p.z), roof = roofAt(p.z);
+  if (ax < HX + 0.7 + r && az < HZ + 0.9 + r && p.y > roof - 0.2 - r && p.y < roof + 0.32 + r) return false;      // the roof
+  if (ax > HX - r && ax < HX + T + r && az < HZ + T + r && p.y > H - r && p.y < roof + 0.3)                        // the gable ends...
+    return p.x < 0 && Math.hypot(p.y - PORT.y, p.z) < PORT.r - 0.1;                                                // ...but for the round window
+  return true;
+}
+const before = new THREE.Vector3(), probe = new THREE.Vector3();
+
+function glide(dx, dy, dz) {                            // one axis at a time, so the bird slides along things; true if it came down on something
+  before.copy(pos); let landed = false;
+  pos.x += dx; if (!free(pos)) pos.x -= dx;
+  pos.z += dz; if (!free(pos)) pos.z -= dz;
+  pos.y += dy; if (!free(pos)) { pos.y -= dy; landed = dy < 0; }
+  if (pos.y < R) { pos.y = R; landed = true; }
+  pos.y = Math.min(pos.y, 30);
+  const far = Math.hypot(pos.x, pos.z); if (far > FAR) { pos.x *= FAR / far; pos.z *= FAR / far; }
+  if (!free(pos)) pos.copy(before);
+  return landed;
+}
+
+function steer(dt) {                                    // true while nothing is asking the bird to flap
+  const turn = held("ArrowLeft", "a") - held("ArrowRight", "d"), climb = held("ArrowUp", "w") - held("ArrowDown", "s");
+  yawWant += turn * 1.7 * dt;
+  pitchWant = Math.max(-0.9, Math.min(0.9, pitchWant + climb * 1.4 * dt));
+  if (!climb && performance.now() - lastLook > 500) pitchWant *= Math.exp(-0.8 * dt);   // level out when left alone
+  return !(held(" ") || pressing || touching);
+}
+
+// How to play, told a line at a time as you go.
+const TIPS = [TOUCH ? "Hold a thumb down to fly" : "Hold Space to fly",
+              TOUCH ? "Drag to steer" : "Move the mouse to steer, or use the arrow keys",
+              "Pop the bubbles. Each one is a word of a resume",
+              "In a hurry? Fly to the laptop on the desk",
+              TOUCH ? "Let go to glide down and land" : "Let go of Space to glide down and land"];
+let tipStep = -1, tipT = 0;
+function tips(dt, gliding) {
+  tipT += dt;
+  if (tipStep >= TIPS.length) return;
+  if (tipStep >= 0 && ![!gliding, tipT > 3.5, eaten > 0 || tipT > 7, tipT > 7, tipT > 1.5 && (perched || tipT > 9)][tipStep]) return;
+  tipStep++; tipT = 0;
+  tipEl.textContent = TIPS[tipStep] || ""; tipEl.classList.toggle("on", tipStep < TIPS.length);
+}
+
+function update(dt, now) {
+  const ease = (k) => 1 - Math.exp(-k * dt);
+  const gliding = state === "playing" ? steer(dt) : true;
+  if (state === "playing") tips(dt, gliding);
+  if (!gliding && perched) { perched = false; pitchWant = Math.max(pitchWant, 0.4); }   // a little hop into the air
+
+  // The bird turns towards where you point it, at its own pace: the room never whips round.
+  yawWant = Math.max(yaw - 1.2, Math.min(yaw + 1.2, yawWant));
+  const turned = Math.max(-2.2 * dt, Math.min(2.2 * dt, (yawWant - yaw) * ease(5)));
+  yaw += turned;
+  if (gliding) pitchWant *= Math.exp(-2 * dt);
+  pitch += (pitchWant - pitch) * ease(4);
+
+  // Flapping holds height and speed. Let go and it glides: slower, sinking gently, flaring just before it lands.
+  const low = !perched && (pos.y < R + 0.45 || !free(probe.copy(pos).setY(pos.y - 0.45)));
+  const want = gliding ? (low ? 0.6 : 1.6) : held("Shift") ? 4.2 : 2.3;
+  speed += (want - speed) * ease(gliding ? 1.3 : 1.7);
+  sink += ((gliding ? -0.75 : 0) - sink) * ease(2.5);
+  if (!perched) {
+    const cp = Math.cos(pitch);
+    const landed = glide(Math.sin(yaw) * cp * speed * dt, (Math.sin(pitch) * speed + sink) * dt, Math.cos(yaw) * cp * speed * dt);
+    if (gliding && landed) { perched = true; speed = 0; sink = 0; }
+  }
+
+  amp += ((perched ? 0 : gliding ? (low ? 0.5 : 0.05) : pitch < -0.25 ? 0.15 : 0.6) - amp) * ease(gliding ? 3.5 : 6);
+  flap += dt * (gliding && !low ? 5 : 14 + Math.max(0, pitch) * 8);
+  fold += ((perched ? 1 : 0) - fold) * ease(perched ? 7 : 10);
+  lean += ((perched || !gliding ? 0 : low ? -0.4 : -0.06) - lean) * ease(3);
+  bank += (Math.max(-0.6, Math.min(0.6, -turned / Math.max(dt, 1e-3) * 0.4)) * (1 - fold) - bank) * ease(4);
+  const a = 0.14 + Math.sin(flap) * amp;
+  for (const w of wings) { w.hinge.rotation.z = w.s * (a * (1 - fold) - 0.3 * fold); w.hinge.rotation.y = w.s * -1.45 * fold; }
+  bird.position.copy(pos); bird.position.y -= 0.05 * fold;
+  bird.rotation.set(0, yaw, 0);
+  body.rotation.set(-pitch * 0.8 + lean, Math.sin(now / 1500) * 0.3 * fold, bank);     // perched, it looks about
+  body.position.y = -Math.sin(flap) * 0.02 * amp;
+}
+
+// The camera trails the bird steadily: level, a little behind the turn, and never with a wall in between.
+const eye = new THREE.Vector3(), look = new THREE.Vector3(), lookAt = new THREE.Vector3(); let framed = false, camYaw = yaw, reachBack = 1;
+function follow(dt) {
+  const ease = (k) => framed ? 1 - Math.exp(-k * dt) : 1;
+  camYaw += (yaw - camYaw) * ease(3.5);
+  const p = pitch * 0.35, back = 1.5;
+  eye.set(pos.x - Math.sin(camYaw) * Math.cos(p) * back, pos.y - Math.sin(p) * back + 0.6, pos.z - Math.cos(camYaw) * Math.cos(p) * back);
+  let clear = 1;
+  for (let i = 1; i <= 8; i++) if (!free(probe.lerpVectors(pos, eye, i / 8), 0.1)) { clear = (i - 1) / 8; break; }
+  reachBack += (Math.max(0.12, clear) - reachBack) * ease(clear < reachBack ? 14 : 2);          // in quickly, back out slowly
+  eye.lerpVectors(pos, eye, reachBack); eye.y = Math.max(0.15, eye.y);
+  look.set(pos.x + Math.sin(camYaw) * 1.6, pos.y + 0.05 + Math.sin(pitch) * 0.8, pos.z + Math.cos(camYaw) * 1.6);
+  camera.position.lerp(eye, ease(10)); lookAt.lerp(look, ease(10)); framed = true;
+  camera.lookAt(lookAt);
+}
+
+// ---- flow --------------------------------------------------------------------------------------------------
+
+function rest(title, sub) {
+  titleEl.textContent = title; subEl.textContent = sub; hintEl.textContent = "";
+  overlay.hidden = false; keys.clear(); touching = pressing = false; restAt = performance.now(); tipEl.classList.remove("on");
+}
+function pause() { if (state === "playing") { state = "ready"; rest("Resting.", ON); } }
+
+function win() {
+  state = "won"; endAt = performance.now(); keys.clear(); touching = pressing = false; tipEl.classList.remove("on");
+  if (document.pointerLockElement) document.exitPointerLock();
+  setTimeout(transpose, 1100);               // let the last word land in the line first
+}
+
+const settled = () => (state !== "won" || performance.now() - endAt > 1100 + WORDS.length * 55 + 1000) && performance.now() - restAt > 400;
+
+function start() {
+  if (state === "playing" || !settled()) return;
+  if (state === "won") { finalEl.hidden = true; for (const s of lineEl.children) s.style.visibility = ""; }
+  state = "playing"; overlay.hidden = true; tipEl.classList.toggle("on", tipStep >= 0 && tipStep < TIPS.length);
+  grab();
+}
+
+function grab() {                            // take the mouse, where there is one
+  if (TOUCH || document.pointerLockElement || !canvas.requestPointerLock) return;
+  try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+}
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
+  update(dt, now); follow(dt);
+  const d = dustGeo.attributes.position;
+  for (let i = 0; i < DUST; i++) d.setXYZ(i, dustHome[i * 3] + Math.sin(now / 2600 + i) * 0.12, dustHome[i * 3 + 1] + Math.sin(now / 3400 + i * 1.7) * 0.1, dustHome[i * 3 + 2] + Math.cos(now / 3000 + i * 0.6) * 0.12);
+  d.needsUpdate = true;
+  bubblesTick(now, dt);
+  fire.intensity = 1.5 + Math.sin(now / 90) * 0.15 + Math.sin(now / 37) * 0.1;
+  renderer.render(scene, camera);
   requestAnimationFrame(frame);
-})();
+}
+
+// ---- input -------------------------------------------------------------------------------------------------
+
+const MOVE = new Set(["w", "a", "s", "d", " ", "Shift", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+const look2 = (dx, dy, k) => { yawWant -= dx * k; pitchWant = Math.max(-0.9, Math.min(0.9, pitchWant - dy * k)); if (dy) lastLook = performance.now(); };
+
+addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (MOVE.has(k)) e.preventDefault();
+  if (state === "playing") { if (MOVE.has(k)) keys.add(k); return; }
+  if (e.repeat || k === "Escape" || k === "Tab") return;
+  start();
+  if (state === "playing" && MOVE.has(k)) keys.add(k);
+});
+addEventListener("keyup", (e) => keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key));
+addEventListener("blur", () => keys.clear());
+
+// The mouse steers once the page has hold of it. Escape lets go.
+document.addEventListener("mousedown", () => { if (state === "playing") { grab(); pressing = true; } else start(); });    // holding the button flies, too
+document.addEventListener("mouseup", () => { pressing = false; });
+document.addEventListener("mousemove", (e) => { if (state === "playing" && document.pointerLockElement === canvas) look2(e.movementX, e.movementY, 0.002); });
+document.addEventListener("pointerlockchange", () => {
+  const now = document.pointerLockElement === canvas;
+  if (locked && !now) pause();
+  locked = now;
+});
+document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// Phones: a thumb down flies, dragging it steers, lifting it lets the bird settle.
+let finger = null, at0;
+const stage = $("stage");
+stage.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  if (state !== "playing" || finger !== null) return;
+  const t = e.changedTouches[0]; finger = t.identifier; at0 = { x: t.clientX, y: t.clientY }; touching = true;
+}, { passive: false });
+stage.addEventListener("touchmove", (e) => {
+  e.preventDefault();
+  for (const t of e.changedTouches) if (t.identifier === finger) { look2(t.clientX - at0.x, t.clientY - at0.y, 0.006); at0 = { x: t.clientX, y: t.clientY }; }
+}, { passive: false });
+const lift = (e) => {
+  for (const t of e.changedTouches) if (t.identifier === finger) { finger = null; touching = false; }
+  if (state !== "playing" && e.type === "touchend") start();
+};
+stage.addEventListener("touchend", lift);
+stage.addEventListener("touchcancel", lift);
+
+addEventListener("resize", size);
+size(); renderLine();
+for (let i = 0; i < 500; i++) bubblesTick(0, 1 / 30);
+requestAnimationFrame(frame);
 </script>
 </body>
 </html>
